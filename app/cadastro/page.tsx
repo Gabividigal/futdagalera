@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 const skillOptions = ['Sou craque', 'Muito bom', 'Tô na média', 'Ruinzinho', 'Sou bagre'];
 
@@ -11,7 +11,18 @@ export default function CadastroPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [skill, setSkill] = useState('');
-  const [touched, setTouched] = useState({ name: false, email: false, phone: false, skill: false });
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [touched, setTouched] = useState({
+    name: false,
+    email: false,
+    phone: false,
+    skill: false,
+    password: false,
+    confirmPassword: false,
+  });
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -27,10 +38,19 @@ export default function CadastroPage() {
   const isEmailValid = emailRegex.test(email.trim());
   const isPhoneValid = /^\(\d{2}\) \d{5}-\d{4}$/.test(phone);
   const isSkillValid = Boolean(skill);
+  const isPasswordValid = password.length >= 6;
+  const isConfirmPasswordValid = password.length >= 6 && password === confirmPassword;
 
-  const isFormValid = isNameValid && isEmailValid && isPhoneValid && isSkillValid;
+  const isFormValid =
+    isNameValid &&
+    isEmailValid &&
+    isPhoneValid &&
+    isSkillValid &&
+    isPasswordValid &&
+    isConfirmPasswordValid;
 
   const handleCreateAccount = async () => {
+    // const { data, error } = await supabase.auth.signUp({ email, password });
     // Placeholder para integração futura com cadastro real.
     return;
   };
@@ -39,7 +59,14 @@ export default function CadastroPage() {
     event.preventDefault();
 
     if (!isFormValid) {
-      setTouched({ name: true, email: true, phone: true, skill: true });
+      setTouched({
+        name: true,
+        email: true,
+        phone: true,
+        skill: true,
+        password: true,
+        confirmPassword: true,
+      });
       return;
     }
 
@@ -56,7 +83,11 @@ export default function CadastroPage() {
           ? isEmailValid
           : field === 'phone'
             ? isPhoneValid
-            : isSkillValid;
+            : field === 'skill'
+              ? isSkillValid
+              : field === 'password'
+                ? isPasswordValid
+                : isConfirmPasswordValid;
 
     if (isValid) return null;
 
@@ -163,6 +194,80 @@ export default function CadastroPage() {
                 ))}
               </select>
               {renderFieldError('skill', 'Selecione seu nível de habilidade.')}
+            </div>
+
+            <div>
+              <label htmlFor="password" className="mb-2 block text-sm font-bold uppercase tracking-[0.12em] text-slate-200">
+                Senha
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 pr-11 text-base text-white placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition hover:text-white"
+                >
+                  {showPassword ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                      <path d="M3 3l18 18" strokeLinecap="round" />
+                      <path d="M10.58 10.58A2 2 0 0013.41 13.41" strokeLinecap="round" />
+                      <path d="M9.88 5.08A10.94 10.94 0 0112 5c4.97 0 9 4.48 9 7a12.28 12.28 0 01-3.44 5.17M6.61 6.61A12.64 12.64 0 003 12c0 2.52 4.03 7 9 7 1.62 0 3.12-.31 4.46-.86" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3" strokeLinecap="round" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {renderFieldError('password', 'A senha deve ter no mínimo 6 caracteres.')}
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="mb-2 block text-sm font-bold uppercase tracking-[0.12em] text-slate-200">
+                Confirme sua senha
+              </label>
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onBlur={() => setTouched((prev) => ({ ...prev, confirmPassword: true }))}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Repita sua senha"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 pr-11 text-base text-white placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+                <button
+                  type="button"
+                  aria-label={showConfirmPassword ? 'Ocultar confirmação da senha' : 'Mostrar confirmação da senha'}
+                  onClick={() => setShowConfirmPassword((value) => !value)}
+                  className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition hover:text-white"
+                >
+                  {showConfirmPassword ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                      <path d="M3 3l18 18" strokeLinecap="round" />
+                      <path d="M10.58 10.58A2 2 0 0013.41 13.41" strokeLinecap="round" />
+                      <path d="M9.88 5.08A10.94 10.94 0 0112 5c4.97 0 9 4.48 9 7a12.28 12.28 0 01-3.44 5.17M6.61 6.61A12.64 12.64 0 003 12c0 2.52 4.03 7 9 7 1.62 0 3.12-.31 4.46-.86" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3" strokeLinecap="round" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {renderFieldError('confirmPassword', 'As senhas não coincidem.')}
             </div>
 
             <button
