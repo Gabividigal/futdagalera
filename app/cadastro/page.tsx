@@ -2,11 +2,13 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 const skillOptions = ['Sou craque', 'Muito bom', 'Tô na média', 'Ruinzinho', 'Sou bagre'];
 
 export default function CadastroPage() {
+  const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -52,7 +54,7 @@ export default function CadastroPage() {
   const handleCreateAccount = async () => {
     // const { data, error } = await supabase.auth.signUp({ email, password });
     // Placeholder para integração futura com cadastro real.
-    return;
+    router.push('/login');
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
