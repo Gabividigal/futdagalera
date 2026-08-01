@@ -42,8 +42,15 @@ export default function DashboardPage() {
 
       if (!error && data) {
         const mappedSalas = data
-          .map((item) => item.salas)
-          .filter((sala): sala is Sala => Boolean(sala));
+          .flatMap((item) => (Array.isArray(item.salas) ? item.salas : [item.salas]))
+          .filter(
+            (sala): sala is Sala =>
+              Boolean(sala) &&
+              typeof sala === 'object' &&
+              'id' in sala &&
+              'nome' in sala &&
+              'codigo_convite' in sala,
+          );
 
         setSalas(mappedSalas);
       }
