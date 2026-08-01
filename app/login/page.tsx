@@ -2,9 +2,11 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -12,7 +14,7 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     // Placeholder para integração futura com autenticação real.
-    return;
+    router.push('/dashboard');
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
