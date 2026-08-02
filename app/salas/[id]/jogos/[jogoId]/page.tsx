@@ -35,6 +35,7 @@ export default function JogoDetalhePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [confirmado, setConfirmado] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!salaId || !jogoId) return;
@@ -87,36 +88,54 @@ export default function JogoDetalhePage() {
   }, [salaId, jogoId]);
 
   const handleConfirmarPresenca = async () => {
-    if (!currentUserId || !jogoId) return;
+    if (!currentUserId || !jogoId || isSubmitting) return;
 
-    const { error } = await supabase.from('presencas').insert([
-      {
-        jogo_id: jogoId,
-        user_id: currentUserId,
-      },
-    ]);
+    setIsSubmitting(true);
 
-    if (!error) {
+    try {
+      if (confirmado) {
+        const { error } = await supabase
+          .from('presencas')
+          .delete()
+          .eq('jogo_id', jogoId)
+          .eq('user_id', currentUserId);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('presencas').insert([
+          {
+            jogo_id: jogoId,
+            user_id: currentUserId,
+          },
+        ]);
+
+        if (error) throw error;
+      }
+
       const { data: presencasAtualizadas, error: presencasError } = await supabase
         .from('presencas')
         .select('user_id, perfis!user_id(nome)')
         .eq('jogo_id', jogoId);
 
-      if (!presencasError && presencasAtualizadas) {
-        const novasPresencas = presencasAtualizadas.map((presenca) => {
-          const perfil = Array.isArray((presenca as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
-            ? (presenca as { perfis?: { nome?: string | null }[] }).perfis?.[0]
-            : (presenca as { perfis?: { nome?: string | null } | null }).perfis;
+      if (presencasError) throw presencasError;
 
-          return {
-            user_id: presenca.user_id,
-            nome: perfil?.nome || 'Usuário sem nome',
-          } as Presenca;
-        });
+      const novasPresencas = (presencasAtualizadas ?? []).map((presenca) => {
+        const perfil = Array.isArray((presenca as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
+          ? (presenca as { perfis?: { nome?: string | null }[] }).perfis?.[0]
+          : (presenca as { perfis?: { nome?: string | null } | null }).perfis;
 
-        setPresencas(novasPresencas);
-        setConfirmado(novasPresencas.some((membro) => membro.user_id === currentUserId));
-      }
+        return {
+          user_id: presenca.user_id,
+          nome: perfil?.nome || 'Usuário sem nome',
+        } as Presenca;
+      });
+
+      setPresencas(novasPresencas);
+      setConfirmado(novasPresencas.some((membro) => membro.user_id === currentUserId));
+    } catch (error) {
+      console.error('Erro ao atualizar presença:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -209,15 +228,17 @@ export default function JogoDetalhePage() {
             <button
               type="button"
               onClick={handleConfirmarPresenca}
-              disabled={confirmado}
+              disabled={isSubmitting}
               className={[
                 'w-full rounded-xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg transition duration-200',
-                confirmado
+                isSubmitting
                   ? 'cursor-not-allowed bg-slate-700 text-slate-300 shadow-none'
-                  : 'bg-gradient-to-r from-red-700 to-red-500 hover:-translate-y-0.5 hover:shadow-red-800/40',
+                  : confirmado
+                    ? 'bg-gradient-to-r from-slate-700 to-slate-500 hover:-translate-y-0.5 hover:shadow-slate-800/40'
+                    : 'bg-gradient-to-r from-red-700 to-red-500 hover:-translate-y-0.5 hover:shadow-red-800/40',
               ].join(' ')}
             >
-              {confirmado ? 'Presença confirmada' : 'Confirmar presença'}
+              {isSubmitting ? 'Aguarde...' : confirmado ? 'Cancelar presença' : 'Confirmar presença'}
             </button>
           </div>
         ) : null}
