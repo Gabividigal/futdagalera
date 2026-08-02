@@ -351,7 +351,7 @@ export default function SalaPage() {
                         className={[
                           'flex h-11 items-center justify-center rounded-xl border text-sm font-bold transition',
                           disabled ? 'cursor-not-allowed border-slate-800 bg-slate-800/50 text-slate-500' : 'border-slate-700 bg-slate-900/60 text-white hover:border-red-500',
-                          isSelected ? 'border-red-500 bg-red-600 text-white shadow-lg shadow-red-900/30' : '',
+                          isSelected ? 'border-red-500 bg-red-600 text-white' : '',
                         ].join(' ')}
                       >
                         {day.getDate()}
