@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { supabase } from '@/lib/supabase/client';
 
 const skillOptions = ['Sou craque', 'Muito bom', 'Tô na média', 'Ruinzinho', 'Sou bagre'];
 
@@ -17,6 +18,7 @@ export default function CadastroPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [touched, setTouched] = useState({
     name: false,
     email: false,
@@ -52,9 +54,37 @@ export default function CadastroPage() {
     isConfirmPasswordValid;
 
   const handleCreateAccount = async () => {
-    // const { data, error } = await supabase.auth.signUp({ email, password });
-    // Placeholder para integração futura com cadastro real.
-    router.push('/login');
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          nome: name,
+          celular: phone,
+          nivel_habilidade: skill,
+        },
+      },
+    });
+
+    if (error) {
+      const normalizedMessage = error.message.toLowerCase();
+
+      if (normalizedMessage.includes('already registered') || normalizedMessage.includes('already exists')) {
+        setSubmitError('Este e-mail já está cadastrado');
+      } else if (normalizedMessage.includes('password')) {
+        setSubmitError('A senha não atende aos requisitos mínimos');
+      } else {
+        setSubmitError('Não foi possível criar a conta. Tente novamente.');
+      }
+
+      setTouched({ name: true, email: true, phone: true, skill: true, password: true, confirmPassword: true });
+      return;
+    }
+
+    if (data.user) {
+      setSubmitError('');
+      router.push('/login');
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -127,6 +157,12 @@ export default function CadastroPage() {
           </h1>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
+            {submitError ? (
+              <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {submitError}
+              </div>
+            ) : null}
+
             <div>
               <label htmlFor="name" className="mb-2 block text-sm font-bold uppercase tracking-[0.12em] text-slate-200">
                 Nome

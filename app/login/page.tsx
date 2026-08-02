@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
+import { supabase } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,15 +14,29 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    // Placeholder para integração futura com autenticação real.
-    router.push('/dashboard');
+    const email = identifier.trim();
+    const senha = password.trim();
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    });
+
+    if (error) {
+      setError('E-mail ou senha incorretos');
+      return;
+    }
+
+    if (data.user) {
+      router.push('/dashboard');
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!identifier.trim() || !password.trim()) {
-      setError('Preencha e-mail/usuário e senha para continuar.');
+      setError('Preencha e-mail e senha');
       return;
     }
 
