@@ -13,6 +13,7 @@ type Sala = {
 
 type Membro = {
   user_id: string;
+  nome: string;
 };
 
 export default function SalaPage() {
@@ -45,11 +46,22 @@ export default function SalaPage() {
 
       const { data: membrosData, error: membrosError } = await supabase
         .from('membros_sala')
-        .select('user_id')
+        .select('user_id, perfis!user_id(nome)')
         .eq('sala_id', id);
 
       if (!membrosError && membrosData) {
-        setMembros(membrosData as Membro[]);
+        const membrosComNome = membrosData.map((membro) => {
+          const perfil = Array.isArray((membro as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
+            ? (membro as { perfis?: { nome?: string | null }[] }).perfis?.[0]
+            : (membro as { perfis?: { nome?: string | null } | null }).perfis;
+
+          return {
+            user_id: membro.user_id,
+            nome: perfil?.nome || 'Usuário sem nome',
+          } as Membro;
+        });
+
+        setMembros(membrosComNome);
       }
     };
 
@@ -150,7 +162,7 @@ export default function SalaPage() {
             <ul className="space-y-2">
               {membros.map((membro) => (
                 <li key={membro.user_id} className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
-                  {membro.user_id}
+                  {membro.nome}
                 </li>
               ))}
             </ul>
