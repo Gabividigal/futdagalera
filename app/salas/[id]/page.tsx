@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
@@ -33,12 +34,21 @@ const formatDateISO = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatDisplayDate = (date: Date) => {
+const formatDisplayDate = (date: Date | string) => {
+  const safeDate = typeof date === 'string' ? new Date(`${date}T00:00:00`) : date;
+
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(date);
+  }).format(safeDate);
+};
+
+const formatLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export default function SalaPage() {
@@ -49,11 +59,11 @@ export default function SalaPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedHour, setSelectedHour] = useState<string | null>(null);
   const [selectedMinute, setSelectedMinute] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState('');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
 
   useEffect(() => {
@@ -159,15 +169,14 @@ export default function SalaPage() {
     const { error } = await supabase.from('jogos').insert([
       {
         sala_id: id,
-        data: formatDateISO(selectedDate),
+        data: selectedDate,
         hora: `${selectedHour}:${selectedMinute}:00`,
         criado_por: currentUserId,
       },
     ]);
 
     if (!error) {
-      const dataFormatada = formatDisplayDate(selectedDate);
-      setSuccessMessage(`Fut marcado para ${dataFormatada} às ${selectedHour}:${selectedMinute}`);
+      setShowSuccessModal(true);
       setShowCalendar(false);
       setSelectedDate(null);
       setSelectedHour(null);
@@ -329,15 +338,16 @@ export default function SalaPage() {
                       return <div key={`empty-${index}`} className="h-11 rounded-xl border border-slate-800 bg-slate-950/40" />;
                     }
 
+                    const dayKey = formatLocalDateKey(day);
                     const disabled = isPastDate(day);
-                    const isSelected = selectedDate && selectedDate.toDateString() === day.toDateString();
+                    const isSelected = selectedDate === dayKey;
 
                     return (
                       <button
-                        key={day.toISOString()}
+                        key={dayKey}
                         type="button"
                         disabled={disabled}
-                        onClick={() => setSelectedDate(day)}
+                        onClick={() => setSelectedDate(dayKey)}
                         className={[
                           'flex h-11 items-center justify-center rounded-xl border text-sm font-bold transition',
                           disabled ? 'cursor-not-allowed border-slate-800 bg-slate-800/50 text-slate-500' : 'border-slate-700 bg-slate-900/60 text-white hover:border-red-500',
@@ -408,26 +418,48 @@ export default function SalaPage() {
           </div>
         ) : null}
 
-        {successMessage ? (
-          <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-            {successMessage}
+        {showSuccessModal ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+            <div className="relative w-full max-w-md rounded-[28px] border border-red-800/60 bg-[#111214]/95 p-6 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8)]">
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(false)}
+                aria-label="Fechar modal"
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-white transition hover:border-red-500 hover:text-red-300"
+              >
+                ×
+              </button>
+
+              <p className="mt-6 text-xl font-black uppercase tracking-[0.12em] text-white">
+                Seu fut foi agendado com sucesso!
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(false)}
+                className="mt-6 w-full rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40"
+              >
+                OK
+              </button>
+            </div>
           </div>
         ) : null}
 
         <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Próximos jogos</h2>
+          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Próximos Futs</h2>
 
           {proximosJogos.length === 0 ? (
             <p className="text-slate-300">Nenhum jogo marcado para esta sala.</p>
           ) : (
             <ul className="space-y-2">
               {proximosJogos.map((jogo) => (
-                <li key={jogo.id} className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
-                  {new Intl.DateTimeFormat('pt-BR', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                  }).format(new Date(`${jogo.data}T00:00:00`))} — {jogo.hora.slice(0, 5)}
+                <li key={jogo.id} className="rounded-xl border border-slate-700 bg-slate-900/60 text-sm text-slate-200">
+                  <Link
+                    href={`/salas/${id}/jogos/${jogo.id}`}
+                    className="block px-3 py-2 transition hover:bg-slate-800/80"
+                  >
+                    {formatDisplayDate(jogo.data)} — {jogo.hora.slice(0, 5)}
+                  </Link>
                 </li>
               ))}
             </ul>
