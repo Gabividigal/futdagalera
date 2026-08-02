@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 
 type Sala = {
@@ -51,6 +51,43 @@ const formatLocalDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const gerarDiasDisponiveis = () => {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: 60 }, (_, index) => {
+    const data = new Date(hoje);
+    data.setDate(hoje.getDate() + index);
+
+    if (index === 0) {
+      return { key: formatLocalDateKey(data), label: 'Hoje' };
+    }
+
+    if (index === 1) {
+      return { key: formatLocalDateKey(data), label: 'Amanhã' };
+    }
+
+    const formatted = new Intl.DateTimeFormat('pt-BR', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }).format(data);
+
+    const normalized = formatted
+      .replace('.', '')
+      .replace(/^./, (char) => char.toUpperCase())
+      .replace(/\s+(\d)/, ' $1');
+
+    const [weekday, dayText, monthText] = normalized.split(' ');
+    const shortMonth = monthText ? monthText.charAt(0).toUpperCase() + monthText.slice(1) : monthText;
+
+    return {
+      key: formatLocalDateKey(data),
+      label: `${weekday}, ${dayText} ${shortMonth}`,
+    };
+  });
+};
+
 export default function SalaPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -60,11 +97,17 @@ export default function SalaPage() {
   const [copied, setCopied] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedHour, setSelectedHour] = useState<string | null>(null);
-  const [selectedMinute, setSelectedMinute] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
+  const [selectedHour, setSelectedHour] = useState<string>('00');
+  const [selectedMinute, setSelectedMinute] = useState<string>('00');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
+  const diaOptions = gerarDiasDisponiveis();
+  const diaColumnRef = useRef<HTMLDivElement | null>(null);
+  const horaColumnRef = useRef<HTMLDivElement | null>(null);
+  const minutoColumnRef = useRef<HTMLDivElement | null>(null);
+  const diaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const horaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const minutoItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -132,35 +175,52 @@ export default function SalaPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const isPastDate = (date: Date) => {
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    return date < hoje;
-  };
+  useEffect(() => {
+    if (!showCalendar) return;
 
-  const monthName = new Intl.DateTimeFormat('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  }).format(calendarMonth);
+    const scrollColumnToSelected = (
+      container: HTMLDivElement | null,
+      itemRefs: Record<string, HTMLButtonElement | null>,
+      selectedValue: string,
+    ) => {
+      if (!container) return;
+      const selectedItem = itemRefs[selectedValue];
+      if (!selectedItem) return;
 
-  const getCalendarDays = () => {
-    const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
-    const lastDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
-    const startOffset = firstDay.getDay();
-    const totalCells = Math.ceil((startOffset + lastDay.getDate()) / 7) * 7;
-    const cells: Array<Date | null> = [];
+      selectedItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
 
-    for (let index = 0; index < totalCells; index += 1) {
-      const dayNumber = index - startOffset + 1;
-      if (dayNumber <= 0 || dayNumber > lastDay.getDate()) {
-        cells.push(null);
-        continue;
+    scrollColumnToSelected(diaColumnRef.current, diaItemRefs.current, selectedDate);
+    scrollColumnToSelected(horaColumnRef.current, horaItemRefs.current, selectedHour);
+    scrollColumnToSelected(minutoColumnRef.current, minutoItemRefs.current, selectedMinute);
+  }, [showCalendar, selectedDate, selectedHour, selectedMinute]);
+
+  const syncSelectionFromScroll = (
+    container: HTMLDivElement | null,
+    items: Record<string, HTMLButtonElement | null>,
+    values: string[],
+    setter: (value: string) => void,
+  ) => {
+    if (!container) return;
+
+    const center = container.scrollTop + container.clientHeight / 2;
+    let closestValue = values[0];
+    let smallestDistance = Number.POSITIVE_INFINITY;
+
+    values.forEach((value) => {
+      const node = items[value];
+      if (!node) return;
+
+      const nodeCenter = node.offsetTop + node.offsetHeight / 2;
+      const distance = Math.abs(nodeCenter - center);
+
+      if (distance < smallestDistance) {
+        smallestDistance = distance;
+        closestValue = value;
       }
+    });
 
-      cells.push(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), dayNumber));
-    }
-
-    return cells;
+    setter(closestValue);
   };
 
   const handleConfirmarFut = async () => {
@@ -178,9 +238,9 @@ export default function SalaPage() {
     if (!error) {
       setShowSuccessModal(true);
       setShowCalendar(false);
-      setSelectedDate(null);
-      setSelectedHour(null);
-      setSelectedMinute(null);
+      setSelectedDate(formatLocalDateKey(new Date()));
+      setSelectedHour('00');
+      setSelectedMinute('00');
 
       const hoje = new Date();
       const hojeISO = formatDateISO(hoje);
@@ -199,7 +259,20 @@ export default function SalaPage() {
   };
 
   const isConfirmDisabled = !selectedDate || !selectedHour || !selectedMinute;
-  const calendarDays = getCalendarDays();
+
+  const getWheelItemClasses = (value: string, selectedValue: string, options: string[]) => {
+    const selectedIndex = options.indexOf(selectedValue);
+    const valueIndex = options.indexOf(value);
+    const distance = Math.abs(valueIndex - selectedIndex);
+    const opacity = Math.max(0.2, 1 - distance * 0.17);
+    const textSize = distance === 0 ? 'text-base' : distance === 1 ? 'text-sm' : 'text-xs';
+
+    if (value === selectedValue) {
+      return `text-base font-extrabold text-red-500 opacity-100`;
+    }
+
+    return `${textSize} font-medium text-slate-400 opacity-${Math.round(opacity * 100)}`;
+  };
 
   if (!sala) {
     return (
@@ -306,113 +379,121 @@ export default function SalaPage() {
 
             {showCalendar ? (
               <div className="mt-4 rounded-2xl border border-red-500/40 bg-[#111214]/90 p-4">
-                <div className="mb-4 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/80 text-xl text-white hover:border-red-500"
-                    aria-label="Mês anterior"
-                  >
-                    &lt;
-                  </button>
-                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-red-200">{monthName}</p>
-                  <button
-                    type="button"
-                    onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/80 text-xl text-white hover:border-red-500"
-                    aria-label="Próximo mês"
-                  >
-                    &gt;
-                  </button>
+                <div className="mb-4 flex items-center justify-center">
+                  <p className="text-sm font-black uppercase tracking-[0.16em] text-red-200">Escolha o horário</p>
                 </div>
 
-                <div className="mb-2 grid grid-cols-7 gap-2 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  {diasSemana.map((dia) => (
-                    <span key={dia}>{dia}</span>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-2">
-                  {calendarDays.map((day, index) => {
-                    if (!day) {
-                      return <div key={`empty-${index}`} className="h-11 rounded-xl border border-slate-800 bg-slate-950/40" />;
-                    }
-
-                    const dayKey = formatLocalDateKey(day);
-                    const disabled = isPastDate(day);
-                    const isSelected = selectedDate === dayKey;
-
-                    return (
-                      <button
-                        key={dayKey}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => setSelectedDate(dayKey)}
-                        className={[
-                          'flex h-11 items-center justify-center rounded-xl border text-sm font-bold transition',
-                          disabled ? 'cursor-not-allowed border-slate-800 bg-slate-800/50 text-slate-500' : 'border-slate-700 bg-slate-900/60 text-white hover:border-red-500',
-                          isSelected ? 'border-red-500 bg-red-600 text-white' : '',
-                        ].join(' ')}
-                      >
-                        {day.getDate()}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {selectedDate ? (
-                  <div className="mt-5 space-y-4">
-                    <div>
-                      <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Hora</p>
-                      <div className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto pr-1">
-                        {horas.map((hora) => (
-                          <button
-                            key={hora}
-                            type="button"
-                            onClick={() => setSelectedHour(hora)}
-                            className={[
-                              'rounded-lg border px-2 py-2 text-sm font-bold transition',
-                              selectedHour === hora ? 'border-red-500 bg-red-600 text-white' : 'border-slate-700 bg-slate-900/70 text-slate-200 hover:border-red-500',
-                            ].join(' ')}
-                          >
-                            {hora}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Minuto</p>
-                      <div className="grid max-h-40 grid-cols-6 gap-2 overflow-y-auto pr-1">
-                        {minutos.map((minuto) => (
-                          <button
-                            key={minuto}
-                            type="button"
-                            onClick={() => setSelectedMinute(minuto)}
-                            className={[
-                              'rounded-lg border px-2 py-2 text-sm font-bold transition',
-                              selectedMinute === minuto ? 'border-red-500 bg-red-600 text-white' : 'border-slate-700 bg-slate-900/70 text-slate-200 hover:border-red-500',
-                            ].join(' ')}
-                          >
-                            {minuto}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleConfirmarFut}
-                      disabled={isConfirmDisabled}
-                      className={[
-                        'w-full rounded-xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg transition duration-200',
-                        isConfirmDisabled ? 'cursor-not-allowed bg-slate-700 text-slate-300 shadow-none' : 'bg-gradient-to-r from-red-700 to-red-500 hover:-translate-y-0.5 hover:shadow-red-800/40',
-                      ].join(' ')}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="relative">
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Dia</p>
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
+                    <div
+                      ref={diaColumnRef}
+                      onScroll={() => {
+                        const timer = setTimeout(() => {
+                          syncSelectionFromScroll(diaColumnRef.current, diaItemRefs.current, diaOptions.map((option) => option.key), setSelectedDate);
+                        }, 80);
+                        return () => clearTimeout(timer);
+                      }}
+                      className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
                     >
-                      Confirmar Fut
-                    </button>
+                      {diaOptions.map((option) => (
+                        <button
+                          key={option.key}
+                          ref={(element) => {
+                            diaItemRefs.current[option.key] = element;
+                          }}
+                          type="button"
+                          onClick={() => setSelectedDate(option.key)}
+                          className={[
+                            'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
+                            getWheelItemClasses(option.key, selectedDate, diaOptions.map((item) => item.key)),
+                          ].join(' ')}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                ) : null}
+
+                  <div className="relative">
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Hora</p>
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
+                    <div
+                      ref={horaColumnRef}
+                      onScroll={() => {
+                        const timer = setTimeout(() => {
+                          syncSelectionFromScroll(horaColumnRef.current, horaItemRefs.current, horas, setSelectedHour);
+                        }, 80);
+                        return () => clearTimeout(timer);
+                      }}
+                      className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
+                    >
+                      {horas.map((hora) => (
+                        <button
+                          key={hora}
+                          ref={(element) => {
+                            horaItemRefs.current[hora] = element;
+                          }}
+                          type="button"
+                          onClick={() => setSelectedHour(hora)}
+                          className={[
+                            'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
+                            getWheelItemClasses(hora, selectedHour, horas),
+                          ].join(' ')}
+                        >
+                          {hora}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Minuto</p>
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
+                    <div
+                      ref={minutoColumnRef}
+                      onScroll={() => {
+                        const timer = setTimeout(() => {
+                          syncSelectionFromScroll(minutoColumnRef.current, minutoItemRefs.current, minutos, setSelectedMinute);
+                        }, 80);
+                        return () => clearTimeout(timer);
+                      }}
+                      className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
+                    >
+                      {minutos.map((minuto) => (
+                        <button
+                          key={minuto}
+                          ref={(element) => {
+                            minutoItemRefs.current[minuto] = element;
+                          }}
+                          type="button"
+                          onClick={() => setSelectedMinute(minuto)}
+                          className={[
+                            'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
+                            getWheelItemClasses(minuto, selectedMinute, minutos),
+                          ].join(' ')}
+                        >
+                          {minuto}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={handleConfirmarFut}
+                    disabled={isConfirmDisabled}
+                    className={[
+                      'w-full rounded-xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg transition duration-200',
+                      isConfirmDisabled ? 'cursor-not-allowed bg-slate-700 text-slate-300 shadow-none' : 'bg-gradient-to-r from-red-700 to-red-500 hover:-translate-y-0.5 hover:shadow-red-800/40',
+                    ].join(' ')}
+                  >
+                    Confirmar Fut
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
