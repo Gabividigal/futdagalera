@@ -18,6 +18,7 @@ type Sala = {
 type Membro = {
   user_id: string;
   nome: string;
+  notaSala?: number | null;
 };
 
 type Jogo = {
@@ -52,6 +53,26 @@ const formatLocalDateKey = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const getNivelHabilidadeValue = (nivel?: string | null) => {
+  const valor = (nivel ?? '').trim().toLowerCase();
+
+  switch (valor) {
+    case 'sou craque':
+      return 10;
+    case 'muito bom':
+      return 7.5;
+    case 'tô na média':
+    case 'to na media':
+      return 5;
+    case 'ruinzinho':
+      return 2.5;
+    case 'sou bagre':
+      return 0;
+    default:
+      return 5;
+  }
 };
 
 const gerarDiasDisponiveis = () => {
@@ -122,6 +143,7 @@ export default function SalaPage() {
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
+  const [loadingNotasMembros, setLoadingNotasMembros] = useState(false);
   const diaOptions = gerarDiasDisponiveis();
   const diaColumnRef = useRef<HTMLDivElement | null>(null);
   const horaColumnRef = useRef<HTMLDivElement | null>(null);
@@ -193,7 +215,79 @@ export default function SalaPage() {
       }
     };
 
+    const carregarNotasDosMembros = async () => {
+      if (!id) return;
+
+      setLoadingNotasMembros(true);
+
+      const { data: jogosDaSalaData } = await supabase.from('jogos').select('id').eq('sala_id', id);
+      const jogoIds = jogosDaSalaData?.map((jogo) => jogo.id) ?? [];
+
+      if (jogoIds.length === 0) {
+        setMembros((currentMembers) => currentMembers.map((member) => ({ ...member, notaSala: null })));
+        setLoadingNotasMembros(false);
+        return;
+      }
+
+      const { data: avaliacoesData } = await supabase
+        .from('avaliacoes')
+        .select('avaliado_id, nota, jogo_id')
+        .in('jogo_id', jogoIds);
+
+      const { data: perfisData } = await supabase.from('perfis').select('user_id, nivel_habilidade');
+
+      const notasPorUsuario = new Map<string, number>();
+
+      if (avaliacoesData) {
+        const porUsuario = new Map<string, Map<string, number[]>>();
+
+        avaliacoesData.forEach((avaliacao) => {
+          const userId = String(avaliacao.avaliado_id);
+          const jogoId = String(avaliacao.jogo_id);
+
+          if (!porUsuario.has(userId)) {
+            porUsuario.set(userId, new Map<string, number[]>());
+          }
+
+          const notasPorJogo = porUsuario.get(userId)!;
+          if (!notasPorJogo.has(jogoId)) {
+            notasPorJogo.set(jogoId, []);
+          }
+          notasPorJogo.get(jogoId)!.push(Number(avaliacao.nota));
+        });
+
+        porUsuario.forEach((notasPorJogo, userId) => {
+          const mediasPorJogo = Array.from(notasPorJogo.values()).map((notas) => {
+            const soma = notas.reduce((total, nota) => total + nota, 0);
+            return soma / notas.length;
+          });
+
+          const notaMediaSala = mediasPorJogo.reduce((total, media) => total + media, 0) / mediasPorJogo.length;
+          notasPorUsuario.set(userId, notaMediaSala);
+        });
+      }
+
+      const perfisMap = new Map<string, string | null>();
+      (perfisData ?? []).forEach((perfil) => {
+        perfisMap.set(String(perfil.user_id), perfil.nivel_habilidade ?? null);
+      });
+
+      setMembros((currentMembers) =>
+        currentMembers.map((member) => {
+          const notaExistente = notasPorUsuario.get(member.user_id);
+          if (typeof notaExistente === 'number') {
+            return { ...member, notaSala: Number(notaExistente.toFixed(1)) };
+          }
+
+          const nivel = perfisMap.get(member.user_id);
+          return { ...member, notaSala: Number(getNivelHabilidadeValue(nivel).toFixed(1)) };
+        }),
+      );
+      setLoadingNotasMembros(false);
+    };
+
     loadSala();
+    carregarNotasDosMembros();
   }, [id]);
 
   const handleCopyCode = async () => {
@@ -527,11 +621,34 @@ export default function SalaPage() {
             <p className="text-slate-300">Nenhum membro encontrado nesta sala.</p>
           ) : (
             <ul className="space-y-2">
-              {membros.map((membro) => (
-                <li key={membro.user_id} className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
-                  {membro.nome}
-                </li>
-              ))}
+              {membros.map((membro) => {
+                const papel = membro.user_id === sala.admin_id
+                  ? '(host)'
+                  : membro.user_id === sala.cohost_id
+                    ? '(co-host)'
+                    : null;
+
+                return (
+                  <li key={membro.user_id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-100">{membro.nome}</p>
+                      {papel ? (
+                        <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{papel}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="ml-3 flex items-center gap-2">
+                      {loadingNotasMembros ? (
+                        <span className="text-xs text-slate-400">...</span>
+                      ) : (
+                        <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-sm font-black text-red-200">
+                          {membro.notaSala?.toFixed(1) ?? '5.0'}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
