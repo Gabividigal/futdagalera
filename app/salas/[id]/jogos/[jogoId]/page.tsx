@@ -17,6 +17,7 @@ type Presenca = {
   nome: string;
   nivel_habilidade?: string | null;
   time_numero?: number | null;
+  valor_habilidade?: number | null;
 };
 
 type Sala = {
@@ -37,19 +38,55 @@ const getNivelHabilidadeValue = (nivel?: string | null) => {
 
   switch (valor) {
     case 'sou craque':
-      return 5;
+      return 10;
     case 'muito bom':
-      return 4;
+      return 7.5;
     case 'tô na média':
     case 'to na media':
-      return 3;
+      return 5;
     case 'ruinzinho':
-      return 2;
+      return 2.5;
     case 'sou bagre':
-      return 1;
+      return 0;
     default:
-      return 3;
+      return 5;
   }
+};
+
+const getNotaNaSalaValue = async (userId: string, salaId: string) => {
+  const { data: jogosDaSalaData } = await supabase.from('jogos').select('id').eq('sala_id', salaId);
+  const jogoIds = jogosDaSalaData?.map((jogo) => jogo.id) ?? [];
+
+  if (jogoIds.length === 0) {
+    return null;
+  }
+
+  const { data: avaliacoesData } = await supabase
+    .from('avaliacoes')
+    .select('nota, jogo_id')
+    .in('jogo_id', jogoIds)
+    .eq('avaliado_id', userId);
+
+  if (!avaliacoesData || avaliacoesData.length === 0) {
+    return null;
+  }
+
+  const mediasPorJogo = Object.values(
+    avaliacoesData.reduce<Record<string, number[]>>((accumulator, avaliacao) => {
+      const jogoId = String(avaliacao.jogo_id);
+      if (!accumulator[jogoId]) {
+        accumulator[jogoId] = [];
+      }
+      accumulator[jogoId].push(Number(avaliacao.nota));
+      return accumulator;
+    }, {}),
+  ).map((notas) => notas.reduce((total, nota) => total + nota, 0) / notas.length);
+
+  if (mediasPorJogo.length === 0) {
+    return null;
+  }
+
+  return mediasPorJogo.reduce((total, media) => total + media, 0) / mediasPorJogo.length;
 };
 
 const buildSnakeTimeOrder = (totalTimes: number) => {
@@ -99,11 +136,11 @@ const buildTimesFromAssignments = (jogadores: Presenca[], capacidade: number) =>
 const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number) => {
   const capacidadeValida = Math.max(1, capacidade || 1);
   const jogadoresOrdenados = [...jogadores].sort((a, b) => {
-    const nivelA = getNivelHabilidadeValue(a.nivel_habilidade);
-    const nivelB = getNivelHabilidadeValue(b.nivel_habilidade);
+    const habilidadeA = a.valor_habilidade ?? getNivelHabilidadeValue(a.nivel_habilidade);
+    const habilidadeB = b.valor_habilidade ?? getNivelHabilidadeValue(b.nivel_habilidade);
 
-    if (nivelB !== nivelA) {
-      return nivelB - nivelA;
+    if (habilidadeB !== habilidadeA) {
+      return habilidadeB - habilidadeA;
     }
 
     return (a.nome || 'Usuário sem nome').localeCompare(b.nome || 'Usuário sem nome');
@@ -310,6 +347,10 @@ export default function JogoDetalhePage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [hasEvaluatedCurrentGame, setHasEvaluatedCurrentGame] = useState(false);
+  const [avaliacaoError, setAvaliacaoError] = useState('');
+  const [isSavingAvaliacoes, setIsSavingAvaliacoes] = useState(false);
+  const [avaliacaoNotas, setAvaliacaoNotas] = useState<Record<string, string>>({});
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
@@ -375,6 +416,7 @@ export default function JogoDetalhePage() {
             nome: perfil?.nome || 'Usuário sem nome',
             nivel_habilidade: perfil?.nivel_habilidade ?? null,
             time_numero: presenca.time_numero ?? null,
+            valor_habilidade: getNivelHabilidadeValue(perfil?.nivel_habilidade ?? null),
           } as Presenca;
         });
 
@@ -386,6 +428,18 @@ export default function JogoDetalhePage() {
 
         if (currentUser) {
           setConfirmado(presencasComNome.some((membro) => membro.user_id === currentUser));
+        }
+      }
+
+      if (currentUser) {
+        const { data: avaliacoesData, error: avaliacoesError } = await supabase
+          .from('avaliacoes')
+          .select('id')
+          .eq('jogo_id', jogoId)
+          .eq('avaliador_id', currentUser);
+
+        if (!avaliacoesError) {
+          setHasEvaluatedCurrentGame(Boolean(avaliacoesData && avaliacoesData.length > 0));
         }
       }
 
@@ -444,6 +498,26 @@ export default function JogoDetalhePage() {
     !!jogo &&
     (selectedDate !== jogo.data || selectedHour !== jogo.hora.slice(0, 2) || selectedMinute !== jogo.hora.slice(3, 5));
 
+  const futJaComecou = !!jogo && new Date(`${jogo.data}T${jogo.hora}`) <= new Date();
+  const isParticipante = currentUserId
+    ? presencas.some((presenca) => presenca.user_id === currentUserId && presenca.time_numero !== null)
+    : false;
+  const jogadoresParaAvaliar = presencas.filter((presenca) => presenca.user_id !== currentUserId && presenca.time_numero !== null);
+  const todosCamposValidos = jogadoresParaAvaliar.length > 0 && jogadoresParaAvaliar.every((jogador) => {
+    const valor = avaliacaoNotas[jogador.user_id]?.trim();
+
+    if (!valor) {
+      return false;
+    }
+
+    if (!/^\d+(\.\d)?$/.test(valor)) {
+      return false;
+    }
+
+    const numero = Number(valor);
+    return Number.isFinite(numero) && numero >= 0 && numero <= 10;
+  });
+
   const handleConfirmarPresenca = async () => {
     if (!currentUserId || !jogoId || isSubmitting) return;
 
@@ -496,14 +570,59 @@ export default function JogoDetalhePage() {
     }
   };
 
+  const handleSalvarAvaliacoes = async () => {
+    if (!currentUserId || !jogoId || jogadoresParaAvaliar.length === 0 || !todosCamposValidos || isSavingAvaliacoes) return;
+
+    setIsSavingAvaliacoes(true);
+    setAvaliacaoError('');
+
+    try {
+      const inserts = jogadoresParaAvaliar.map((jogador) => ({
+        jogo_id: jogoId,
+        avaliador_id: currentUserId,
+        avaliado_id: jogador.user_id,
+        nota: Number(Number(avaliacaoNotas[jogador.user_id]).toFixed(1)),
+      }));
+
+      const { error } = await supabase.from('avaliacoes').insert(inserts);
+
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('Você já avaliou este fut.');
+        }
+        throw error;
+      }
+
+      setHasEvaluatedCurrentGame(true);
+      setAvaliacaoNotas({});
+    } catch (error) {
+      console.error('Erro ao salvar avaliações:', error);
+      setAvaliacaoError(
+        error instanceof Error && error.message === 'Você já avaliou este fut.'
+          ? 'Você já avaliou os jogadores deste fut. Obrigado!'
+          : 'Não foi possível salvar as avaliações. Tente novamente.',
+      );
+    } finally {
+      setIsSavingAvaliacoes(false);
+    }
+  };
+
   const handleMontarTimes = async () => {
     if (!isAdmin || !jogoId || presencas.length === 0 || isSubmitting) return;
 
     const capacidade = Math.max(1, tamanhoTime ?? 1);
-    const jogadores = presencas.map((presenca) => ({
-      ...presenca,
-      nivel_habilidade: presenca.nivel_habilidade ?? null,
-    }));
+    const jogadores = await Promise.all(
+      presencas.map(async (presenca) => {
+        const notaNaSala = salaId ? await getNotaNaSalaValue(presenca.user_id, salaId) : null;
+        const valorHabilidade = notaNaSala ?? getNivelHabilidadeValue(presenca.nivel_habilidade);
+
+        return {
+          ...presenca,
+          nivel_habilidade: presenca.nivel_habilidade ?? null,
+          valor_habilidade: valorHabilidade,
+        } as Presenca;
+      }),
+    );
 
     const timesDistribuidos = gerarDistribuicaoTimes(jogadores, capacidade);
     const numeroDeTimes = timesDistribuidos.length;
@@ -841,6 +960,66 @@ export default function JogoDetalhePage() {
             >
               {isSubmitting ? 'Aguarde...' : confirmado ? 'Cancelar presença' : 'Confirmar presença'}
             </button>
+          </div>
+        ) : null}
+
+        {futJaComecou && isParticipante && !hasEvaluatedCurrentGame ? (
+          <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
+            <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Avaliar Jogadores</h2>
+            <p className="mb-4 text-sm text-slate-300">Agora que o fut já começou, avalie o desempenho dos jogadores que participaram.</p>
+
+            {jogadoresParaAvaliar.length === 0 ? (
+              <p className="text-sm text-slate-300">Não há outros participantes para avaliar neste fut.</p>
+            ) : (
+              <div className="space-y-3">
+                {jogadoresParaAvaliar.map((jogador) => (
+                  <div key={jogador.user_id} className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-sm font-semibold text-slate-200">{jogador.nome}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.1"
+                      value={avaliacaoNotas[jogador.user_id] ?? ''}
+                      onChange={(event) =>
+                        setAvaliacaoNotas((current) => ({
+                          ...current,
+                          [jogador.user_id]: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none transition focus:border-red-500 sm:w-28"
+                      placeholder="0 a 10"
+                    />
+                  </div>
+                ))}
+
+                {avaliacaoError ? (
+                  <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                    {avaliacaoError}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={handleSalvarAvaliacoes}
+                  disabled={!todosCamposValidos || isSavingAvaliacoes}
+                  className={[
+                    'w-full rounded-xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg transition duration-200',
+                    !todosCamposValidos || isSavingAvaliacoes
+                      ? 'cursor-not-allowed bg-slate-700 text-slate-300 shadow-none'
+                      : 'bg-gradient-to-r from-red-700 to-red-500 hover:-translate-y-0.5 hover:shadow-red-800/40',
+                  ].join(' ')}
+                >
+                  {isSavingAvaliacoes ? 'Salvando...' : 'Salvar Notas'}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {futJaComecou && isParticipante && hasEvaluatedCurrentGame ? (
+          <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-slate-200">
+            Você já avaliou os jogadores deste fut. Obrigado!
           </div>
         ) : null}
 
