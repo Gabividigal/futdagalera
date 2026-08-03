@@ -2,8 +2,14 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Pelada AVM',
-  description: 'Aplicação Next.js com Supabase',
+  title: 'FUT DA GALERA',
+  description: 'Organize suas peladas, confirme presença e monte times equilibrados com facilidade.',
+  openGraph: {
+    title: 'FUT DA GALERA',
+    description: 'Organize suas peladas, confirme presença e monte times equilibrados com facilidade.',
+    url: 'https://futdagalera.vercel.app',
+    siteName: 'FUT DA GALERA',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
