@@ -13,8 +13,10 @@ type Jogo = {
 };
 
 type Presenca = {
-  user_id: string;
+  id?: string;
+  user_id?: string | null;
   nome: string;
+  nome_convidado?: string | null;
   nivel_habilidade?: string | null;
   time_numero?: number | null;
   valor_habilidade?: number | null;
@@ -38,6 +40,14 @@ type MembroSalaGerencia = {
   user_id: string;
   nome: string;
   confirmado: boolean;
+};
+
+type PresencaGerenciaItem = {
+  id?: string;
+  user_id?: string | null;
+  nome: string;
+  confirmado: boolean;
+  tipo: 'membro' | 'convidado';
 };
 
 const getNivelHabilidadeValue = (nivel?: string | null) => {
@@ -158,10 +168,14 @@ const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number, numer
   const ordemTimes = buildSnakeTimeOrder(totalTimes);
   const lotacao = Array.from({ length: totalTimes }, () => 0);
   const atribuicao = new Map<string, number>();
+  const jogadoresComChave = jogadoresOrdenados.map((jogador, index) => ({
+    jogador,
+    chave: jogador.user_id ?? `${jogador.nome || 'convidado'}-${index}`,
+  }));
 
   let currentIndex = 0;
 
-  for (const jogador of jogadoresOrdenados) {
+  for (const { jogador, chave } of jogadoresComChave) {
     let timeAtribuido = false;
     let tentativas = 0;
 
@@ -172,7 +186,7 @@ const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number, numer
 
       if (lotacao[timeIndex] < capacidadeValida) {
         lotacao[timeIndex] += 1;
-        atribuicao.set(jogador.user_id, timeIndex + 1);
+        atribuicao.set(chave, timeIndex + 1);
         timeAtribuido = true;
       }
     }
@@ -181,16 +195,16 @@ const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number, numer
       const primeiroTimeDisponivel = lotacao.findIndex((quantidade) => quantidade < capacidadeValida);
       if (primeiroTimeDisponivel >= 0) {
         lotacao[primeiroTimeDisponivel] += 1;
-        atribuicao.set(jogador.user_id, primeiroTimeDisponivel + 1);
+        atribuicao.set(chave, primeiroTimeDisponivel + 1);
       }
     }
   }
 
   return Array.from({ length: totalTimes }, (_, index) => ({
     time: index + 1,
-    jogadores: jogadoresOrdenados
-      .filter((jogador) => atribuicao.get(jogador.user_id) === index + 1)
-      .map((jogador) => jogador.nome || 'Usuário sem nome'),
+    jogadores: jogadoresComChave
+      .filter(({ chave }) => atribuicao.get(chave) === index + 1)
+      .map(({ jogador }) => jogador.nome || 'Usuário sem nome'),
   }));
 };
 
@@ -399,6 +413,7 @@ export default function JogoDetalhePage() {
   const [isSavingAvaliacoes, setIsSavingAvaliacoes] = useState(false);
   const [avaliacaoNotas, setAvaliacaoNotas] = useState<Record<string, string>>({});
   const [membrosSalaParaGerenciar, setMembrosSalaParaGerenciar] = useState<MembroSalaGerencia[]>([]);
+  const [guestName, setGuestName] = useState('');
   const [isUpdatingManagedPresence, setIsUpdatingManagedPresence] = useState(false);
   const [selectedPlayerForSwap, setSelectedPlayerForSwap] = useState<Presenca | null>(null);
   const [isSwappingPlayers, setIsSwappingPlayers] = useState(false);
@@ -416,7 +431,7 @@ export default function JogoDetalhePage() {
 
     const { data: presencasAtualizadas, error: presencasError } = await supabase
       .from('presencas')
-      .select('user_id, time_numero, perfis!user_id(id, nome, nivel_habilidade)')
+      .select('id, user_id, nome_convidado, time_numero, perfis!user_id(id, nome, nivel_habilidade)')
       .eq('jogo_id', jogoId);
 
     if (!presencasError && presencasAtualizadas) {
@@ -426,11 +441,13 @@ export default function JogoDetalhePage() {
           : (presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null } | null }).perfis;
 
         return {
+          id: presenca.id,
           user_id: presenca.user_id,
-          nome: perfil?.nome || 'Usuário sem nome',
+          nome: presenca.user_id ? perfil?.nome || 'Usuário sem nome' : (presenca.nome_convidado || 'Convidado'),
+          nome_convidado: presenca.nome_convidado ?? null,
           nivel_habilidade: perfil?.nivel_habilidade ?? null,
           time_numero: presenca.time_numero ?? null,
-          valor_habilidade: getNivelHabilidadeValue(perfil?.nivel_habilidade ?? null),
+          valor_habilidade: presenca.user_id ? getNivelHabilidadeValue(perfil?.nivel_habilidade ?? null) : 5,
         } as Presenca;
       });
 
@@ -444,7 +461,7 @@ export default function JogoDetalhePage() {
       .eq('sala_id', salaId);
 
     if (!membrosSalaError && membrosSalaData) {
-      const presencasMap = new Set((presencasAtualizadas ?? []).map((presenca) => presenca.user_id));
+      const presencasMap = new Set((presencasAtualizadas ?? []).filter((presenca) => presenca.user_id !== null).map((presenca) => presenca.user_id));
 
       const membrosAtualizados = membrosSalaData.map((membro) => {
         const perfil = Array.isArray((membro as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
@@ -504,7 +521,7 @@ export default function JogoDetalhePage() {
 
       const { data: presencasData, error: presencasError } = await supabase
         .from('presencas')
-        .select('user_id, time_numero, perfis!user_id(id, nome, nivel_habilidade)')
+        .select('id, user_id, nome_convidado, time_numero, perfis!user_id(id, nome, nivel_habilidade)')
         .eq('jogo_id', jogoId);
 
       if (!presencasError && presencasData) {
@@ -514,11 +531,13 @@ export default function JogoDetalhePage() {
             : (presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null } | null }).perfis;
 
           return {
+            id: presenca.id,
             user_id: presenca.user_id,
-            nome: perfil?.nome || 'Usuário sem nome',
+            nome: presenca.user_id ? perfil?.nome || 'Usuário sem nome' : (presenca.nome_convidado || 'Convidado'),
+            nome_convidado: presenca.nome_convidado ?? null,
             nivel_habilidade: perfil?.nivel_habilidade ?? null,
             time_numero: presenca.time_numero ?? null,
-            valor_habilidade: getNivelHabilidadeValue(perfil?.nivel_habilidade ?? null),
+            valor_habilidade: presenca.user_id ? getNivelHabilidadeValue(perfil?.nivel_habilidade ?? null) : 5,
           } as Presenca;
         });
 
@@ -625,7 +644,10 @@ export default function JogoDetalhePage() {
   const isParticipante = currentUserId
     ? presencas.some((presenca) => presenca.user_id === currentUserId && presenca.time_numero !== null)
     : false;
-  const jogadoresParaAvaliar = presencas.filter((presenca) => presenca.user_id !== currentUserId && presenca.time_numero !== null);
+  const jogadoresParaAvaliar = presencas.filter(
+    (presenca): presenca is Presenca & { user_id: string } =>
+      Boolean(presenca.user_id) && presenca.user_id !== currentUserId && presenca.time_numero !== null,
+  );
   const todosCamposValidos = jogadoresParaAvaliar.length > 0 && jogadoresParaAvaliar.every((jogador) => {
     const valor = avaliacaoNotas[jogador.user_id]?.trim();
 
@@ -674,34 +696,71 @@ export default function JogoDetalhePage() {
     }
   };
 
-  const handleGerenciarPresenca = async (membro: MembroSalaGerencia, confirmar: boolean) => {
+  const handleAdicionarConvidado = async () => {
+    if (!jogoId || !salaId || isUpdatingManagedPresence) return;
+
+    const nome = guestName.trim();
+    if (!nome) return;
+
+    setIsUpdatingManagedPresence(true);
+
+    try {
+      const { error } = await supabase.from('presencas').insert([
+        {
+          jogo_id: jogoId,
+          user_id: null,
+          nome_convidado: nome,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setGuestName('');
+      await refreshPresenceData();
+    } catch (error) {
+      console.error('Erro ao adicionar convidado:', error);
+    } finally {
+      setIsUpdatingManagedPresence(false);
+    }
+  };
+
+  const handleGerenciarPresenca = async (item: PresencaGerenciaItem, confirmar: boolean) => {
     if (!jogoId || !salaId || isUpdatingManagedPresence) return;
 
     setIsUpdatingManagedPresence(true);
 
     try {
       if (confirmar) {
-        const { error } = await supabase.from('presencas').insert([
-          {
-            jogo_id: jogoId,
-            user_id: membro.user_id,
-          },
-        ]);
+        if (item.tipo === 'membro') {
+          const { error } = await supabase.from('presencas').insert([
+            {
+              jogo_id: jogoId,
+              user_id: item.user_id,
+            },
+          ]);
+
+          if (error) throw error;
+        }
+      } else if (item.tipo === 'convidado' && item.id) {
+        const { error } = await supabase
+          .from('presencas')
+          .delete()
+          .eq('id', item.id);
 
         if (error) throw error;
-      } else {
+      } else if (item.tipo === 'membro' && item.user_id) {
         const { error } = await supabase
           .from('presencas')
           .delete()
           .eq('jogo_id', jogoId)
-          .eq('user_id', membro.user_id);
+          .eq('user_id', item.user_id);
 
         if (error) throw error;
       }
 
       await refreshPresenceData();
     } catch (error) {
-      console.error('Erro ao atualizar presença do membro:', error);
+      console.error('Erro ao atualizar presença do item:', error);
     } finally {
       setIsUpdatingManagedPresence(false);
     }
@@ -809,7 +868,7 @@ export default function JogoDetalhePage() {
       const numeroDeTimes = Math.max(1, Math.ceil(presencas.length / capacidade));
       const jogadores = await Promise.all(
         presencas.map(async (presenca) => {
-          const notaNaSala = salaId ? await getNotaNaSalaValue(presenca.user_id, salaId) : null;
+          const notaNaSala = salaId && presenca.user_id ? await getNotaNaSalaValue(presenca.user_id, salaId) : null;
           const valorHabilidade = notaNaSala ?? getNivelHabilidadeValue(presenca.nivel_habilidade);
 
           return {
@@ -854,11 +913,21 @@ export default function JogoDetalhePage() {
           const jogador = jogadores.find((item) => (item.nome || 'Usuário sem nome') === jogadorNome);
           if (!jogador) continue;
 
-          await supabase
-            .from('presencas')
-            .update({ time_numero: time.time })
-            .eq('jogo_id', jogoId)
-            .eq('user_id', jogador.user_id);
+          if (jogador.id) {
+            await supabase.from('presencas').update({ time_numero: time.time }).eq('id', jogador.id);
+          } else if (jogador.user_id) {
+            await supabase
+              .from('presencas')
+              .update({ time_numero: time.time })
+              .eq('jogo_id', jogoId)
+              .eq('user_id', jogador.user_id);
+          } else {
+            await supabase
+              .from('presencas')
+              .update({ time_numero: time.time })
+              .eq('jogo_id', jogoId)
+              .eq('user_id', null);
+          }
         }
       }
 
@@ -1221,33 +1290,73 @@ export default function JogoDetalhePage() {
         {isAdminOuCohost ? (
           <div className="mb-6 rounded-2xl border border-red-500/40 bg-[#111214]/90 p-4">
             <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Gerenciar Presenças</h2>
-            <p className="mb-4 text-sm text-slate-300">Confirme ou remova a presença de qualquer membro desta sala para este fut.</p>
+            <p className="mb-4 text-sm text-slate-300">Confirme ou remova a presença de membros da sala e de convidados avulsos para este fut.</p>
 
-            {membrosSalaParaGerenciar.length === 0 ? (
-              <p className="text-slate-300">Nenhum membro disponível para gestão.</p>
-            ) : (
-              <ul className="space-y-2">
-                {membrosSalaParaGerenciar.map((membro) => (
-                  <li key={membro.user_id} className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-sm font-semibold text-slate-100">{membro.nome}</span>
-                    <button
-                      type="button"
-                      disabled={isUpdatingManagedPresence}
-                      onClick={() => handleGerenciarPresenca(membro, !membro.confirmado)}
-                      className={[
-                        'rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition',
-                        membro.confirmado
-                          ? 'border border-slate-600 bg-slate-800 text-slate-200 hover:border-red-500 hover:text-red-200'
-                          : 'border border-red-500/60 bg-red-500/10 text-red-200 hover:border-red-400 hover:bg-red-500/20',
-                        isUpdatingManagedPresence ? 'cursor-not-allowed opacity-60' : '',
-                      ].join(' ')}
-                    >
-                      {membro.confirmado ? 'Remover Presença' : 'Confirmar Presença'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div className="mb-4 flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/70 p-3 sm:flex-row">
+              <input
+                value={guestName}
+                onChange={(event) => setGuestName(event.target.value)}
+                placeholder="Nome do convidado avulso"
+                className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none transition focus:border-red-500"
+              />
+              <button
+                type="button"
+                disabled={isUpdatingManagedPresence || !guestName.trim()}
+                onClick={handleAdicionarConvidado}
+                className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Adicionar Convidado
+              </button>
+            </div>
+
+            {(() => {
+              const itensGerenciamento: PresencaGerenciaItem[] = [
+                ...membrosSalaParaGerenciar.map((membro) => ({
+                  id: undefined,
+                  user_id: membro.user_id,
+                  nome: membro.nome,
+                  confirmado: membro.confirmado,
+                  tipo: 'membro' as const,
+                })),
+                ...presencas
+                  .filter((presenca) => Boolean(presenca.nome_convidado))
+                  .map((presenca) => ({
+                    id: presenca.id,
+                    user_id: null,
+                    nome: presenca.nome_convidado || presenca.nome || 'Convidado',
+                    confirmado: true,
+                    tipo: 'convidado' as const,
+                  })),
+              ];
+
+              if (itensGerenciamento.length === 0) {
+                return <p className="text-slate-300">Nenhum membro ou convidado disponível para gestão.</p>;
+              }
+
+              return (
+                <ul className="space-y-2">
+                  {itensGerenciamento.map((item) => (
+                    <li key={`${item.tipo}-${item.id ?? item.user_id ?? item.nome}`} className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-sm font-semibold text-slate-100">{item.nome}</span>
+                      <button
+                        type="button"
+                        disabled={isUpdatingManagedPresence}
+                        onClick={() => handleGerenciarPresenca(item, !item.confirmado)}
+                        className={[
+                          'rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition',
+                          item.confirmado
+                            ? 'border border-slate-600 bg-slate-800 text-slate-200 hover:border-red-500 hover:text-red-200'
+                            : 'border border-red-500/60 bg-red-500/10 text-red-200 hover:border-red-400 hover:bg-red-500/20',
+                          isUpdatingManagedPresence ? 'cursor-not-allowed opacity-60' : '',
+                        ].join(' ')}
+                      >
+                        {item.confirmado ? 'Remover Presença' : 'Confirmar Presença'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
           </div>
         ) : null}
 
@@ -1261,8 +1370,11 @@ export default function JogoDetalhePage() {
           ) : (
             <ul className="space-y-2">
               {presencas.map((presenca) => (
-                <li key={presenca.user_id} className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
-                  {presenca.nome}
+                <li key={presenca.id ?? presenca.user_id ?? presenca.nome} className="flex items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
+                  <span>{presenca.nome_convidado ? presenca.nome_convidado : presenca.nome}</span>
+                  {presenca.nome_convidado ? (
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">(convidado)</span>
+                  ) : null}
                 </li>
               ))}
             </ul>
