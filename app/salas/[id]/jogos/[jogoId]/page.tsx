@@ -15,11 +15,121 @@ type Jogo = {
 type Presenca = {
   user_id: string;
   nome: string;
+  nivel_habilidade?: string | null;
+  time_numero?: number | null;
 };
 
 type Sala = {
   id: string;
   admin_id: string;
+  tamanho_time?: number | null;
+};
+
+const getNivelHabilidadeValue = (nivel?: string | null) => {
+  const valor = (nivel ?? '').trim().toLowerCase();
+
+  switch (valor) {
+    case 'sou craque':
+      return 5;
+    case 'muito bom':
+      return 4;
+    case 'tô na média':
+    case 'to na media':
+      return 3;
+    case 'ruinzinho':
+      return 2;
+    case 'sou bagre':
+      return 1;
+    default:
+      return 3;
+  }
+};
+
+const buildSnakeTimeOrder = (totalTimes: number) => {
+  if (totalTimes <= 0) return [];
+
+  const ordem: number[] = [];
+  let direction = 1;
+
+  while (ordem.length < totalTimes * 4) {
+    if (direction === 1) {
+      for (let i = 0; i < totalTimes; i += 1) {
+        ordem.push(i);
+      }
+    } else {
+      for (let i = totalTimes - 1; i >= 0; i -= 1) {
+        ordem.push(i);
+      }
+    }
+
+    direction *= -1;
+  }
+
+  return ordem;
+};
+
+const buildTimesFromAssignments = (jogadores: Presenca[], capacidade: number) => {
+  const timesMap = new Map<number, { time: number; jogadores: string[] }>();
+
+  jogadores.forEach((jogador) => {
+    const timeNumero = Number(jogador.time_numero ?? 0);
+    if (timeNumero <= 0) return;
+
+    const timeAtual = timesMap.get(timeNumero) ?? { time: timeNumero, jogadores: [] };
+    timeAtual.jogadores.push(jogador.nome || 'Usuário sem nome');
+    timesMap.set(timeNumero, timeAtual);
+  });
+
+  const timeCards = Array.from(timesMap.values()).sort((a, b) => a.time - b.time);
+
+  return timeCards.map((timeCard) => ({
+    ...timeCard,
+    jogadores: [...timeCard.jogadores],
+    capacidade,
+  }));
+};
+
+const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number) => {
+  const capacidadeValida = Math.max(1, capacidade || 1);
+  const jogadoresOrdenados = [...jogadores].sort((a, b) => {
+    const nivelA = getNivelHabilidadeValue(a.nivel_habilidade);
+    const nivelB = getNivelHabilidadeValue(b.nivel_habilidade);
+
+    if (nivelB !== nivelA) {
+      return nivelB - nivelA;
+    }
+
+    return (a.nome || 'Usuário sem nome').localeCompare(b.nome || 'Usuário sem nome');
+  });
+
+  const totalTimes = Math.max(1, Math.ceil(jogadoresOrdenados.length / capacidadeValida));
+  const ordemTimes = buildSnakeTimeOrder(totalTimes);
+  const lotacao = Array.from({ length: totalTimes }, () => 0);
+  const atribuicao = new Map<string, number>();
+
+  let currentIndex = 0;
+
+  for (const jogador of jogadoresOrdenados) {
+    let timeAtribuido = false;
+
+    while (!timeAtribuido) {
+      const timeIndex = ordemTimes[currentIndex % ordemTimes.length];
+      currentIndex += 1;
+
+      if (lotacao[timeIndex] < capacidadeValida) {
+        lotacao[timeIndex] += 1;
+        atribuicao.set(jogador.user_id, timeIndex + 1);
+        timeAtribuido = true;
+      }
+    }
+  }
+
+  return Array.from({ length: totalTimes }, (_, index) => ({
+    time: index + 1,
+    jogadores: jogadoresOrdenados
+      .filter((jogador) => atribuicao.get(jogador.user_id) === index + 1)
+      .map((jogador) => jogador.nome || 'Usuário sem nome'),
+  }));
 };
 
 const horas = Array.from({ length: 24 }, (_, index) => index.toString().padStart(2, '0'));
@@ -127,6 +237,8 @@ export default function JogoDetalhePage() {
 
   const [jogo, setJogo] = useState<Jogo | null>(null);
   const [presencas, setPresencas] = useState<Presenca[]>([]);
+  const [timesMontados, setTimesMontados] = useState<Array<{ time: number; jogadores: string[]; capacidade?: number }>>([]);
+  const [tamanhoTime, setTamanhoTime] = useState<number | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [confirmado, setConfirmado] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -180,27 +292,35 @@ export default function JogoDetalhePage() {
         .single();
 
       if (!salaError && salaData) {
-        setIsAdmin((salaData as Sala).admin_id === currentUser);
+        const salaAtual = salaData as Sala;
+        setTamanhoTime(typeof salaAtual.tamanho_time === 'number' ? salaAtual.tamanho_time : null);
+        setIsAdmin(salaAtual.admin_id === currentUser);
       }
 
       const { data: presencasData, error: presencasError } = await supabase
         .from('presencas')
-        .select('user_id, perfis!user_id(nome)')
+        .select('user_id, time_numero, perfis!user_id(nome, nivel_habilidade)')
         .eq('jogo_id', jogoId);
 
       if (!presencasError && presencasData) {
         const presencasComNome = presencasData.map((presenca) => {
-          const perfil = Array.isArray((presenca as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
-            ? (presenca as { perfis?: { nome?: string | null }[] }).perfis?.[0]
-            : (presenca as { perfis?: { nome?: string | null } | null }).perfis;
+          const perfil = Array.isArray((presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null }[] | { nome?: string | null; nivel_habilidade?: string | null } | null }).perfis)
+            ? (presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null }[] }).perfis?.[0]
+            : (presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null } | null }).perfis;
 
           return {
             user_id: presenca.user_id,
             nome: perfil?.nome || 'Usuário sem nome',
+            nivel_habilidade: perfil?.nivel_habilidade ?? null,
+            time_numero: presenca.time_numero ?? null,
           } as Presenca;
         });
 
         setPresencas(presencasComNome);
+
+        const capacidade = typeof salaData?.tamanho_time === 'number' ? salaData.tamanho_time : 1;
+        const timesExistentes = buildTimesFromAssignments(presencasComNome, capacidade || 1);
+        setTimesMontados(timesExistentes);
 
         if (currentUser) {
           setConfirmado(presencasComNome.some((membro) => membro.user_id === currentUser));
@@ -294,6 +414,48 @@ export default function JogoDetalhePage() {
       console.error('Erro ao atualizar presença:', error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleMontarTimes = async () => {
+    if (!isAdmin || !jogoId || presencas.length === 0 || isSubmitting) return;
+
+    const capacidade = Math.max(1, tamanhoTime ?? 1);
+    const jogadores = presencas.map((presenca) => ({
+      ...presenca,
+      nivel_habilidade: presenca.nivel_habilidade ?? null,
+    }));
+
+    const timesDistribuidos = gerarDistribuicaoTimes(jogadores, capacidade);
+
+    try {
+      for (const time of timesDistribuidos) {
+        for (const jogadorNome of time.jogadores) {
+          const jogador = jogadores.find((item) => (item.nome || 'Usuário sem nome') === jogadorNome);
+          if (!jogador) continue;
+
+          await supabase
+            .from('presencas')
+            .update({ time_numero: time.time })
+            .eq('jogo_id', jogoId)
+            .eq('user_id', jogador.user_id);
+        }
+      }
+
+      const jogadoresSemTime = jogadores.map((jogador) => ({
+        ...jogador,
+        time_numero: timesDistribuidos.find((time) => time.jogadores.includes(jogador.nome || 'Usuário sem nome'))?.time ?? null,
+      }));
+
+      setPresencas(jogadoresSemTime);
+      setTimesMontados(
+        timesDistribuidos.map((time) => ({
+          ...time,
+          capacidade,
+        })),
+      );
+    } catch (error) {
+      console.error('Erro ao montar times:', error);
     }
   };
 
@@ -589,6 +751,62 @@ export default function JogoDetalhePage() {
             </ul>
           )}
         </div>
+
+        {presencas.length > 0 ? (
+          <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-black uppercase tracking-[0.12em] text-white">Times</h2>
+
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleMontarTimes}
+                  disabled={presencas.length === 0}
+                  className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Montar Times
+                </button>
+              ) : null}
+            </div>
+
+            {timesMontados.length === 0 ? (
+              <p className="text-slate-300">Ainda não foi montado nenhum time para este fut.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {timesMontados.map((time) => {
+                  const capacidade = Math.max(1, time.capacidade ?? tamanhoTime ?? 1);
+                  const jogadoresExibidos = [...time.jogadores];
+
+                  while (jogadoresExibidos.length < capacidade) {
+                    jogadoresExibidos.push('COMPLETA');
+                  }
+
+                  return (
+                    <div key={time.time} className="rounded-2xl border border-red-500/30 bg-[#111214]/80 p-3">
+                      <p className="mb-3 text-sm font-black uppercase tracking-[0.12em] text-red-200">Time {time.time}</p>
+
+                      <ul className="space-y-2">
+                        {jogadoresExibidos.map((jogador, index) => (
+                          <li
+                            key={`${time.time}-${jogador}-${index}`}
+                            className={[
+                              'rounded-xl border px-2 py-2 text-sm',
+                              jogador === 'COMPLETA'
+                                ? 'border-dashed border-slate-600 bg-slate-800/40 text-slate-400 line-through'
+                                : 'border-slate-700 bg-slate-900/60 text-slate-200',
+                            ].join(' ')}
+                          >
+                            {jogador}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {showCancelModal ? (
