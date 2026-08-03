@@ -461,7 +461,11 @@ export default function JogoDetalhePage() {
       .eq('sala_id', salaId);
 
     if (!membrosSalaError && membrosSalaData) {
-      const presencasMap = new Set((presencasAtualizadas ?? []).filter((presenca) => presenca.user_id !== null).map((presenca) => presenca.user_id));
+      const presencasMap = new Set(
+        (presencasAtualizadas ?? [])
+          .filter((presenca) => presenca.user_id !== null)
+          .map((presenca) => presenca.user_id),
+      );
 
       const membrosAtualizados = membrosSalaData.map((membro) => {
         const perfil = Array.isArray((membro as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
@@ -731,7 +735,21 @@ export default function JogoDetalhePage() {
 
     try {
       if (confirmar) {
-        if (item.tipo === 'membro') {
+        if (item.tipo === 'membro' && item.user_id) {
+          setMembrosSalaParaGerenciar((current) => current.map((membro) => (membro.user_id === item.user_id ? { ...membro, confirmado: true } : membro)));
+          setPresencas((current) => [
+            ...current,
+            {
+              id: `optimistic-${item.user_id}`,
+              user_id: item.user_id,
+              nome: item.nome,
+              nome_convidado: null,
+              nivel_habilidade: null,
+              time_numero: null,
+              valor_habilidade: 5,
+            } as Presenca,
+          ]);
+
           const { error } = await supabase.from('presencas').insert([
             {
               jogo_id: jogoId,
@@ -742,6 +760,8 @@ export default function JogoDetalhePage() {
           if (error) throw error;
         }
       } else if (item.tipo === 'convidado' && item.id) {
+        setPresencas((current) => current.filter((presenca) => presenca.id !== item.id));
+
         const { error } = await supabase
           .from('presencas')
           .delete()
@@ -749,6 +769,9 @@ export default function JogoDetalhePage() {
 
         if (error) throw error;
       } else if (item.tipo === 'membro' && item.user_id) {
+        setMembrosSalaParaGerenciar((current) => current.map((membro) => (membro.user_id === item.user_id ? { ...membro, confirmado: false } : membro)));
+        setPresencas((current) => current.filter((presenca) => presenca.user_id !== item.user_id));
+
         const { error } = await supabase
           .from('presencas')
           .delete()
