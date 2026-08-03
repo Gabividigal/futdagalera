@@ -93,20 +93,21 @@ const buildSnakeTimeOrder = (totalTimes: number) => {
   if (totalTimes <= 0) return [];
 
   const ordem: number[] = [];
-  let direction = 1;
+  let indice = 0;
+  let direcao = 1;
 
   while (ordem.length < totalTimes * 4) {
-    if (direction === 1) {
-      for (let i = 0; i < totalTimes; i += 1) {
-        ordem.push(i);
-      }
-    } else {
-      for (let i = totalTimes - 1; i >= 0; i -= 1) {
-        ordem.push(i);
-      }
-    }
+    ordem.push(indice);
 
-    direction *= -1;
+    indice += direcao;
+
+    if (indice >= totalTimes) {
+      indice = totalTimes - 2;
+      direcao = -1;
+    } else if (indice < 0) {
+      indice = 1;
+      direcao = 1;
+    }
   }
 
   return ordem;
@@ -133,8 +134,8 @@ const buildTimesFromAssignments = (jogadores: Presenca[], capacidade: number) =>
   }));
 };
 
-const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number) => {
-  const capacidadeValida = Math.max(1, capacidade || 1);
+const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number, numeroDeTimesOverride?: number) => {
+  const capacidadeValida = Math.max(1, Number(capacidade) || 1);
   const jogadoresOrdenados = [...jogadores].sort((a, b) => {
     const habilidadeA = a.valor_habilidade ?? getNivelHabilidadeValue(a.nivel_habilidade);
     const habilidadeB = b.valor_habilidade ?? getNivelHabilidadeValue(b.nivel_habilidade);
@@ -146,7 +147,7 @@ const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number) => {
     return (a.nome || 'Usuário sem nome').localeCompare(b.nome || 'Usuário sem nome');
   });
 
-  const totalTimes = Math.max(1, Math.ceil(jogadoresOrdenados.length / capacidadeValida));
+  const totalTimes = Math.max(1, numeroDeTimesOverride ?? Math.ceil(jogadoresOrdenados.length / capacidadeValida));
   const ordemTimes = buildSnakeTimeOrder(totalTimes);
   const lotacao = Array.from({ length: totalTimes }, () => 0);
   const atribuicao = new Map<string, number>();
@@ -155,15 +156,25 @@ const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number) => {
 
   for (const jogador of jogadoresOrdenados) {
     let timeAtribuido = false;
+    let tentativas = 0;
 
-    while (!timeAtribuido) {
+    while (!timeAtribuido && tentativas < totalTimes * jogadoresOrdenados.length) {
       const timeIndex = ordemTimes[currentIndex % ordemTimes.length];
       currentIndex += 1;
+      tentativas += 1;
 
       if (lotacao[timeIndex] < capacidadeValida) {
         lotacao[timeIndex] += 1;
         atribuicao.set(jogador.user_id, timeIndex + 1);
         timeAtribuido = true;
+      }
+    }
+
+    if (!timeAtribuido) {
+      const primeiroTimeDisponivel = lotacao.findIndex((quantidade) => quantidade < capacidadeValida);
+      if (primeiroTimeDisponivel >= 0) {
+        lotacao[primeiroTimeDisponivel] += 1;
+        atribuicao.set(jogador.user_id, primeiroTimeDisponivel + 1);
       }
     }
   }
@@ -608,39 +619,47 @@ export default function JogoDetalhePage() {
   };
 
   const handleMontarTimes = async () => {
-    if (!isAdmin || !jogoId || presencas.length === 0 || isSubmitting) return;
-
-    const capacidade = Math.max(1, tamanhoTime ?? 1);
-    const jogadores = await Promise.all(
-      presencas.map(async (presenca) => {
-        const notaNaSala = salaId ? await getNotaNaSalaValue(presenca.user_id, salaId) : null;
-        const valorHabilidade = notaNaSala ?? getNivelHabilidadeValue(presenca.nivel_habilidade);
-
-        return {
-          ...presenca,
-          nivel_habilidade: presenca.nivel_habilidade ?? null,
-          valor_habilidade: valorHabilidade,
-        } as Presenca;
-      }),
-    );
-
-    const timesDistribuidos = gerarDistribuicaoTimes(jogadores, capacidade);
-    const numeroDeTimes = timesDistribuidos.length;
-    const coresUsadas: string[] = [];
-    const timesParaInserir: TimeJogo[] = [];
-
-    for (let numeroDoTime = 1; numeroDoTime <= numeroDeTimes; numeroDoTime += 1) {
-      const cor = getCorDoTime(numeroDoTime, coresUsadas);
-      coresUsadas.push(cor);
-
-      timesParaInserir.push({
-        jogo_id: jogoId,
-        numero: numeroDoTime,
-        cor,
-      });
-    }
+    if (!isAdmin || !jogoId || !salaId || presencas.length === 0 || isSubmitting) return;
 
     try {
+      const { data: salaAtualData, error: salaAtualError } = await supabase
+        .from('salas')
+        .select('tamanho_time')
+        .eq('id', salaId)
+        .single();
+
+      if (salaAtualError) throw salaAtualError;
+
+      const capacidade = Math.max(1, Number(salaAtualData?.tamanho_time ?? tamanhoTime ?? 1));
+      const numeroDeTimes = Math.max(1, Math.ceil(presencas.length / capacidade));
+      const jogadores = await Promise.all(
+        presencas.map(async (presenca) => {
+          const notaNaSala = salaId ? await getNotaNaSalaValue(presenca.user_id, salaId) : null;
+          const valorHabilidade = notaNaSala ?? getNivelHabilidadeValue(presenca.nivel_habilidade);
+
+          return {
+            ...presenca,
+            nivel_habilidade: presenca.nivel_habilidade ?? null,
+            valor_habilidade: valorHabilidade,
+          } as Presenca;
+        }),
+      );
+
+      const timesDistribuidos = gerarDistribuicaoTimes(jogadores, capacidade, numeroDeTimes);
+      const coresUsadas: string[] = [];
+      const timesParaInserir: TimeJogo[] = [];
+
+      for (let numeroDoTime = 1; numeroDoTime <= numeroDeTimes; numeroDoTime += 1) {
+        const cor = getCorDoTime(numeroDoTime, coresUsadas);
+        coresUsadas.push(cor);
+
+        timesParaInserir.push({
+          jogo_id: jogoId,
+          numero: numeroDoTime,
+          cor,
+        });
+      }
+
       await supabase.from('times').delete().eq('jogo_id', jogoId);
 
       if (timesParaInserir.length > 0) {
