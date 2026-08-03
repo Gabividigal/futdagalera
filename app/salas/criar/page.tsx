@@ -18,6 +18,8 @@ const generateInviteCode = () => {
 export default function CriarSalaPage() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [tamanhoTime, setTamanhoTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,9 +27,16 @@ export default function CriarSalaPage() {
     event.preventDefault();
 
     const trimmedName = name.trim();
+    const trimmedDescricao = descricao.trim();
+    const normalizedTamanhoTime = tamanhoTime.trim();
 
     if (!trimmedName) {
       setError('Digite um nome para a sala.');
+      return;
+    }
+
+    if (normalizedTamanhoTime && (!/^[1-9]\d*$/.test(normalizedTamanhoTime) || Number(normalizedTamanhoTime) > 11)) {
+      setError('O tamanho do time deve ser um número inteiro entre 1 e 11.');
       return;
     }
 
@@ -46,12 +55,15 @@ export default function CriarSalaPage() {
       }
 
       const codigoConvite = generateInviteCode();
+      const tamanhoValue = normalizedTamanhoTime ? Number(normalizedTamanhoTime) : null;
 
       const { data: salaData, error: salaError } = await supabase
         .from('salas')
         .insert([
           {
             nome: trimmedName,
+            descricao: trimmedDescricao || null,
+            tamanho_time: tamanhoValue,
             admin_id: user.id,
             codigo_convite: codigoConvite,
           },
@@ -130,6 +142,36 @@ export default function CriarSalaPage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Pelada dos Amigos"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-base text-white placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="salaDescricao" className="mb-2 block text-sm font-bold uppercase tracking-[0.12em] text-slate-200">
+                Descrição
+              </label>
+              <textarea
+                id="salaDescricao"
+                value={descricao}
+                onChange={(event) => setDescricao(event.target.value)}
+                placeholder="Endereço, ponto de referência, outras informações..."
+                rows={4}
+                className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-base text-white placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="tamanhoTime" className="mb-2 block text-sm font-bold uppercase tracking-[0.12em] text-slate-200">
+                Tamanho de cada time
+              </label>
+              <input
+                id="tamanhoTime"
+                type="number"
+                min={1}
+                max={11}
+                value={tamanhoTime}
+                onChange={(event) => setTamanhoTime(event.target.value)}
+                placeholder="Quantos jogadores por time?"
                 className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-base text-white placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
               />
             </div>

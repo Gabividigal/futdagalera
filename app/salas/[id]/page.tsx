@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase/client';
 type Sala = {
   id: string;
   nome: string;
+  descricao?: string | null;
+  tamanho_time?: number | null;
   codigo_convite: string;
   admin_id: string;
 };
@@ -323,9 +325,21 @@ export default function SalaPage() {
       <div className="relative z-10 w-full max-w-3xl rounded-[28px] border border-red-800/60 bg-[#111214]/90 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:p-7">
         <div className="mb-6 text-center">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-red-300">Sala</p>
-          <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] text-white sm:text-4xl">
-            {sala.nome}
-          </h1>
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <h1 className="text-3xl font-black uppercase tracking-[0.12em] text-white sm:text-4xl">
+              {sala.nome}
+            </h1>
+
+            {sala.tamanho_time ? (
+              <span className="inline-flex items-center rounded-full border border-red-500/60 bg-red-500/10 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-red-200">
+                Times de {sala.tamanho_time}
+              </span>
+            ) : null}
+          </div>
+
+          {sala.descricao ? (
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">{sala.descricao}</p>
+          ) : null}
         </div>
 
         <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
