@@ -173,7 +173,7 @@ export default function SalaPage() {
         setSala(salaAtual);
 
         if (salaAtual.cohost_id) {
-          const { data: cohostData } = await supabase.from('perfis').select('nome').eq('user_id', salaAtual.cohost_id).single();
+          const { data: cohostData } = await supabase.from('perfis').select('nome').eq('id', salaAtual.cohost_id).single();
           setCohostNome(cohostData?.nome || 'Usuário sem nome');
         } else {
           setCohostNome(null);
@@ -234,7 +234,7 @@ export default function SalaPage() {
         .select('avaliado_id, nota, jogo_id')
         .in('jogo_id', jogoIds);
 
-      const { data: perfisData } = await supabase.from('perfis').select('user_id, nivel_habilidade');
+      const { data: perfisData } = await supabase.from('perfis').select('id, nivel_habilidade');
 
       const notasPorUsuario = new Map<string, number>();
 
@@ -269,7 +269,7 @@ export default function SalaPage() {
 
       const perfisMap = new Map<string, string | null>();
       (perfisData ?? []).forEach((perfil) => {
-        perfisMap.set(String(perfil.user_id), perfil.nivel_habilidade ?? null);
+        perfisMap.set(String(perfil.id), perfil.nivel_habilidade ?? null);
       });
 
       setMembros((currentMembers) =>

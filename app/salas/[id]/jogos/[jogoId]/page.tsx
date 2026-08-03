@@ -402,7 +402,7 @@ export default function JogoDetalhePage() {
 
       const { data: presencasData, error: presencasError } = await supabase
         .from('presencas')
-        .select('user_id, time_numero, perfis!user_id(nome, nivel_habilidade)')
+        .select('user_id, time_numero, perfis!user_id(id, nome, nivel_habilidade)')
         .eq('jogo_id', jogoId);
 
       if (!presencasError && presencasData) {
@@ -545,7 +545,7 @@ export default function JogoDetalhePage() {
 
       const { data: presencasAtualizadas, error: presencasError } = await supabase
         .from('presencas')
-        .select('user_id, perfis!user_id(nome)')
+        .select('user_id, perfis!user_id(id, nome)')
         .eq('jogo_id', jogoId);
 
       if (presencasError) throw presencasError;
