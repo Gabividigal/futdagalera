@@ -130,12 +130,6 @@ export default function CadastroPage() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
       <div className="relative z-10 w-full max-w-md">
         <div className="rounded-[28px] border border-red-800/60 bg-[#111214]/90 px-5 py-7 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:px-7">
-          <div className="mb-4 flex items-center justify-center gap-3 text-center">
-            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-red-500/70 bg-white/5 shadow-[0_0_20px_rgba(127,29,29,0.45)]">
-              <Image src="/logo.JPG" alt="Logo Arena Vovô Mau" width={72} height={72} priority className="object-cover" />
-            </div>
-          </div>
-
           <h1 className="mb-6 text-center text-3xl font-black uppercase tracking-[0.12em] text-white sm:text-4xl">
             Criar conta
           </h1>

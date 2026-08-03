@@ -55,24 +55,8 @@ export default function LoginPage() {
         <div className="rounded-[28px] border border-red-800/60 bg-[#111214]/90 px-5 py-7 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:px-7">
           <div className="mb-5 text-center">
             <h1 className="text-4xl font-black uppercase tracking-[0.12em] text-white sm:text-5xl">
-              ARENA VOVÔ MAU
+              FUT DA GALERA
             </h1>
-          </div>
-
-          <div className="mb-6 flex justify-center">
-            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-2 border-red-500/70 bg-white/5 shadow-[0_0_30px_rgba(127,29,29,0.45)]">
-              <Image src="/logo.JPG" alt="Logo Arena Vovô Mau" width={120} height={120} priority className="object-cover" />
-            </div>
-          </div>
-
-          <div className="mb-6 flex items-center justify-center gap-3 text-red-400">
-            <svg viewBox="0 0 64 64" aria-hidden="true" className="h-7 w-7 text-red-400" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="32" cy="32" r="27" stroke="currentColor" strokeWidth="3" />
-              <path d="M32 11c-4 7-6 13-6 20s2 13 6 22c4-9 6-15 6-22s-2-13-6-20Z" stroke="currentColor" strokeWidth="3" />
-              <path d="M11 32c8-4 14-6 21-6s13 2 21 6c-8 4-14 6-21 6s-13-2-21-6Z" stroke="currentColor" strokeWidth="3" />
-              <path d="M20 20l24 24M44 20L20 44" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-            </svg>
-            <span className="text-[10px] font-black uppercase tracking-[0.28em] text-red-300">Club</span>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
