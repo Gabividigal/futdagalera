@@ -62,6 +62,7 @@ export default function CadastroPage() {
       options: {
         data: {
           nome: name,
+          full_name: name,
           celular: phone,
           nivel_habilidade: skill,
         },
