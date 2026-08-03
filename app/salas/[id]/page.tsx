@@ -12,6 +12,7 @@ type Sala = {
   tamanho_time?: number | null;
   codigo_convite: string;
   admin_id: string;
+  cohost_id?: string | null;
 };
 
 type Membro = {
@@ -103,15 +104,21 @@ export default function SalaPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [editError, setEditError] = useState('');
   const [removeMemberError, setRemoveMemberError] = useState('');
+  const [roleError, setRoleError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingSala, setIsSavingSala] = useState(false);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
   const [editForm, setEditForm] = useState({ nome: '', descricao: '', tamanho_time: '' });
   const [memberToRemove, setMemberToRemove] = useState<Membro | null>(null);
+  const [memberToRoleChange, setMemberToRoleChange] = useState<Membro | null>(null);
+  const [roleAction, setRoleAction] = useState<'transfer-host' | 'toggle-cohost' | null>(null);
+  const [cohostNome, setCohostNome] = useState<string | null>(null);
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
@@ -140,7 +147,15 @@ export default function SalaPage() {
         .single();
 
       if (!salaError && salaData) {
-        setSala(salaData as Sala);
+        const salaAtual = salaData as Sala;
+        setSala(salaAtual);
+
+        if (salaAtual.cohost_id) {
+          const { data: cohostData } = await supabase.from('perfis').select('nome').eq('user_id', salaAtual.cohost_id).single();
+          setCohostNome(cohostData?.nome || 'Usuário sem nome');
+        } else {
+          setCohostNome(null);
+        }
       }
 
       const { data: membrosData, error: membrosError } = await supabase
@@ -273,7 +288,7 @@ export default function SalaPage() {
   };
 
   const handleDeleteSala = async () => {
-    if (!id || !sala || !isAdmin || isDeleting) return;
+    if (!id || !sala || !isAdminOuCohost || isDeleting) return;
 
     setIsDeleting(true);
     setDeleteError('');
@@ -349,7 +364,7 @@ export default function SalaPage() {
   };
 
   const handleRemoveMember = async () => {
-    if (!id || !memberToRemove) return;
+    if (!id || !memberToRemove || !isAdmin) return;
 
     setIsRemovingMember(true);
     setRemoveMemberError('');
@@ -369,6 +384,47 @@ export default function SalaPage() {
       setRemoveMemberError('Não foi possível remover esse membro. Tente novamente.');
     } finally {
       setIsRemovingMember(false);
+    }
+  };
+
+  const handleRoleAction = async () => {
+    if (!id || !sala || !memberToRoleChange || !roleAction || !isAdmin || isUpdatingRole) return;
+
+    setIsUpdatingRole(true);
+    setRoleError('');
+
+    try {
+      const nextPayload = roleAction === 'transfer-host'
+        ? { admin_id: memberToRoleChange.user_id }
+        : { cohost_id: sala.cohost_id === memberToRoleChange.user_id ? null : memberToRoleChange.user_id };
+
+      const { error } = await supabase.from('salas').update(nextPayload).eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      setSala((currentSala) =>
+        currentSala
+          ? {
+              ...currentSala,
+              ...nextPayload,
+            }
+          : currentSala,
+      );
+
+      if (roleAction === 'toggle-cohost') {
+        setCohostNome(nextPayload.cohost_id ? memberToRoleChange.nome : null);
+      }
+
+      setShowRoleModal(false);
+      setMemberToRoleChange(null);
+      setRoleAction(null);
+    } catch (error) {
+      console.error('Erro ao alterar função da sala:', error);
+      setRoleError('Não foi possível atualizar a função desse membro. Tente novamente.');
+    } finally {
+      setIsUpdatingRole(false);
     }
   };
 
@@ -399,6 +455,7 @@ export default function SalaPage() {
   }
 
   const isAdmin = currentUserId === sala.admin_id;
+  const isAdminOuCohost = isAdmin || currentUserId === sala.cohost_id;
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
@@ -426,6 +483,12 @@ export default function SalaPage() {
           {sala.descricao ? (
             <p className="mt-3 text-sm leading-relaxed text-slate-300">{sala.descricao}</p>
           ) : null}
+
+          {cohostNome ? (
+            <div className="mt-3 inline-flex items-center rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-red-200">
+              Co-host: {cohostNome}
+            </div>
+          ) : null}
         </div>
 
         <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
@@ -451,6 +514,12 @@ export default function SalaPage() {
           </div>
         ) : null}
 
+        {!isAdmin && currentUserId === sala.cohost_id ? (
+          <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Você é o co-host desta sala
+          </div>
+        ) : null}
+
         <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
           <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Membros</h2>
 
@@ -467,7 +536,7 @@ export default function SalaPage() {
           )}
         </div>
 
-        {isAdmin ? (
+        {isAdminOuCohost ? (
           <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
             <button
               type="button"
@@ -647,7 +716,7 @@ export default function SalaPage() {
           )}
         </div>
 
-        {isAdmin ? (
+        {isAdminOuCohost ? (
           <div className="mt-6 border-t border-red-800/40 pt-5">
             <div className="flex flex-col gap-3">
               <button
@@ -742,44 +811,73 @@ export default function SalaPage() {
                 />
               </div>
 
-              <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-                <h3 className="mb-3 text-base font-black uppercase tracking-[0.12em] text-white">Gerenciar Membros</h3>
+              {isAdmin ? (
+                <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+                  <h3 className="mb-3 text-base font-black uppercase tracking-[0.12em] text-white">Gerenciar Membros</h3>
 
-                {membros.length === 0 ? (
-                  <p className="text-sm text-slate-300">Nenhum membro encontrado nesta sala.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {membros.map((membro) => {
-                      const isOwner = membro.user_id === sala.admin_id;
+                  {membros.length === 0 ? (
+                    <p className="text-sm text-slate-300">Nenhum membro encontrado nesta sala.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {membros.map((membro) => {
+                        const isOwner = membro.user_id === sala.admin_id;
+                        const isCurrentCohost = membro.user_id === sala.cohost_id;
 
-                      return (
-                        <li
-                          key={membro.user_id}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2"
-                        >
-                          <span className="text-sm text-slate-200">{membro.nome}</span>
+                        return (
+                          <li
+                            key={membro.user_id}
+                            className="flex flex-col gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <span className="text-sm text-slate-200">{membro.nome}</span>
 
-                          {!isOwner ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMemberToRemove(membro);
-                                setRemoveMemberError('');
-                                setShowRemoveMemberModal(true);
-                              }}
-                              className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
-                            >
-                              Remover
-                            </button>
-                          ) : (
-                            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Admin</span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
+                            {!isOwner ? (
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMemberToRemove(membro);
+                                    setRemoveMemberError('');
+                                    setShowRemoveMemberModal(true);
+                                  }}
+                                  className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
+                                >
+                                  Remover
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMemberToRoleChange(membro);
+                                    setRoleAction('transfer-host');
+                                    setRoleError('');
+                                    setShowRoleModal(true);
+                                  }}
+                                  className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
+                                >
+                                  Tornar Host
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMemberToRoleChange(membro);
+                                    setRoleAction('toggle-cohost');
+                                    setRoleError('');
+                                    setShowRoleModal(true);
+                                  }}
+                                  className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
+                                >
+                                  {isCurrentCohost ? 'Remover Co-host' : 'Tornar Co-host'}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Admin</span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
 
               {editError ? (
                 <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{editError}</div>
@@ -801,6 +899,71 @@ export default function SalaPage() {
                 className="flex-1 rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSavingSala ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRoleModal && memberToRoleChange ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div className="relative w-full max-w-md rounded-[28px] border border-red-800/60 bg-[#111214]/95 p-6 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8)]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowRoleModal(false);
+                setMemberToRoleChange(null);
+                setRoleAction(null);
+                setRoleError('');
+              }}
+              aria-label="Fechar confirmação"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-white transition hover:border-red-500 hover:text-red-300"
+            >
+              ×
+            </button>
+
+            <p className="mt-6 text-xl font-black uppercase tracking-[0.12em] text-white">
+              {roleAction === 'transfer-host'
+                ? 'Tem certeza?'
+                : sala?.cohost_id === memberToRoleChange.user_id
+                  ? 'Remover co-host?'
+                  : 'Definir co-host?'}
+            </p>
+
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              {roleAction === 'transfer-host'
+                ? `Você deixará de ser o host desta sala e perderá as permissões administrativas. O novo host será ${memberToRoleChange.nome}.`
+                : sala?.cohost_id === memberToRoleChange.user_id
+                  ? `Você está removendo ${memberToRoleChange.nome} como co-host desta sala.`
+                  : `Você está definindo ${memberToRoleChange.nome} como co-host desta sala.`}
+            </p>
+
+            {roleError ? (
+              <div className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {roleError}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRoleModal(false);
+                  setMemberToRoleChange(null);
+                  setRoleAction(null);
+                  setRoleError('');
+                }}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-700 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:border-slate-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRoleAction}
+                disabled={isUpdatingRole}
+                className="flex-1 rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isUpdatingRole ? 'Atualizando...' : roleAction === 'transfer-host' ? 'Sim, transferir' : 'Confirmar'}
               </button>
             </div>
           </div>
