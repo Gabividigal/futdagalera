@@ -682,12 +682,12 @@ export default function JogoDetalhePage() {
 
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('presencas').insert([
+        const { error } = await supabase.from('presencas').upsert([
           {
             jogo_id: jogoId,
             user_id: currentUserId,
           },
-        ]);
+        ], { onConflict: 'jogo_id,user_id', ignoreDuplicates: true });
 
         if (error) throw error;
       }
@@ -750,12 +750,12 @@ export default function JogoDetalhePage() {
             } as Presenca,
           ]);
 
-          const { error } = await supabase.from('presencas').insert([
+          const { error } = await supabase.from('presencas').upsert([
             {
               jogo_id: jogoId,
               user_id: item.user_id,
             },
-          ]);
+          ], { onConflict: 'jogo_id,user_id', ignoreDuplicates: true });
 
           if (error) throw error;
         }
