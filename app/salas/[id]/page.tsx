@@ -28,8 +28,6 @@ type Jogo = {
 };
 
 const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const horas = Array.from({ length: 24 }, (_, index) => index.toString().padStart(2, '0'));
-const minutos = Array.from({ length: 60 }, (_, index) => index.toString().padStart(2, '0'));
 
 const formatDateISO = (date: Date) => {
   const year = date.getFullYear();
@@ -53,6 +51,44 @@ const formatLocalDateKey = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const normalizeTimeValue = (value: string, max: number) => {
+  const sanitizedValue = value.replace(/\D/g, '');
+
+  if (!sanitizedValue) {
+    return '';
+  }
+
+  const numericValue = Number(sanitizedValue);
+
+  if (!Number.isInteger(numericValue) || numericValue < 0 || numericValue > max) {
+    return sanitizedValue;
+  }
+
+  return String(numericValue).padStart(2, '0');
+};
+
+const getTimeValidationError = (hourValue: string, minuteValue: string) => {
+  if (!hourValue) {
+    return 'Informe a hora.';
+  }
+
+  const hourNumber = Number(hourValue);
+  if (!Number.isInteger(hourNumber) || hourNumber < 0 || hourNumber > 23) {
+    return 'A hora deve estar entre 00 e 23.';
+  }
+
+  if (!minuteValue) {
+    return 'Informe os minutos.';
+  }
+
+  const minuteNumber = Number(minuteValue);
+  if (!Number.isInteger(minuteNumber) || minuteNumber < 0 || minuteNumber > 59) {
+    return 'Os minutos devem estar entre 00 e 59.';
+  }
+
+  return '';
 };
 
 const getNivelHabilidadeValue = (nivel?: string | null) => {
@@ -142,15 +178,12 @@ export default function SalaPage() {
   const [cohostNome, setCohostNome] = useState<string | null>(null);
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
+  const [timeValidationError, setTimeValidationError] = useState('');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
   const [loadingNotasMembros, setLoadingNotasMembros] = useState(false);
   const diaOptions = gerarDiasDisponiveis();
   const diaColumnRef = useRef<HTMLDivElement | null>(null);
-  const horaColumnRef = useRef<HTMLDivElement | null>(null);
-  const minutoColumnRef = useRef<HTMLDivElement | null>(null);
   const diaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const horaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const minutoItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -314,9 +347,7 @@ export default function SalaPage() {
     };
 
     scrollColumnToSelected(diaColumnRef.current, diaItemRefs.current, selectedDate);
-    scrollColumnToSelected(horaColumnRef.current, horaItemRefs.current, selectedHour);
-    scrollColumnToSelected(minutoColumnRef.current, minutoItemRefs.current, selectedMinute);
-  }, [showCalendar, selectedDate, selectedHour, selectedMinute]);
+  }, [showCalendar, selectedDate]);
 
   const syncSelectionFromScroll = (
     container: HTMLDivElement | null,
@@ -347,13 +378,24 @@ export default function SalaPage() {
   };
 
   const handleConfirmarFut = async () => {
-    if (!selectedDate || !selectedHour || !selectedMinute || !currentUserId || !id) return;
+    if (!currentUserId || !id) return;
+
+    const normalizedHour = normalizeTimeValue(selectedHour, 23);
+    const normalizedMinute = normalizeTimeValue(selectedMinute, 59);
+    const validationError = getTimeValidationError(normalizedHour, normalizedMinute);
+
+    if (!selectedDate || validationError) {
+      setTimeValidationError(validationError || 'Informe um horário válido.');
+      return;
+    }
+
+    setTimeValidationError('');
 
     const { error } = await supabase.from('jogos').insert([
       {
         sala_id: id,
         data: selectedDate,
-        hora: `${selectedHour}:${selectedMinute}:00`,
+        hora: `${normalizedHour}:${normalizedMinute}:00`,
         criado_por: currentUserId,
       },
     ]);
@@ -522,7 +564,7 @@ export default function SalaPage() {
     }
   };
 
-  const isConfirmDisabled = !selectedDate || !selectedHour || !selectedMinute;
+  const isConfirmDisabled = !selectedDate || !selectedHour || !selectedMinute || !!timeValidationError;
 
   const getWheelItemClasses = (value: string, selectedValue: string, options: string[]) => {
     const selectedIndex = options.indexOf(selectedValue);
@@ -669,8 +711,8 @@ export default function SalaPage() {
                   <p className="text-sm font-black uppercase tracking-[0.16em] text-red-200">Escolha o horário</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="relative">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="relative sm:col-span-1">
                     <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Dia</p>
                     <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
                     <div
@@ -702,70 +744,66 @@ export default function SalaPage() {
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Hora</p>
-                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
-                    <div
-                      ref={horaColumnRef}
-                      onScroll={() => {
-                        const timer = setTimeout(() => {
-                          syncSelectionFromScroll(horaColumnRef.current, horaItemRefs.current, horas, setSelectedHour);
-                        }, 80);
-                        return () => clearTimeout(timer);
+                  <div className="flex flex-col gap-2 rounded-2xl border border-slate-700 bg-slate-950/70 p-3 sm:col-span-1">
+                    <label htmlFor="hora-fut" className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">
+                      Hora
+                    </label>
+                    <input
+                      id="hora-fut"
+                      type="number"
+                      min="0"
+                      max="23"
+                      inputMode="numeric"
+                      value={selectedHour}
+                      onChange={(event) => {
+                        const nextValue = event.target.value.replace(/\D/g, '');
+                        setSelectedHour(nextValue);
+                        setTimeValidationError(getTimeValidationError(nextValue, selectedMinute));
                       }}
-                      className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
-                    >
-                      {horas.map((hora) => (
-                        <button
-                          key={hora}
-                          ref={(element) => {
-                            horaItemRefs.current[hora] = element;
-                          }}
-                          type="button"
-                          onClick={() => setSelectedHour(hora)}
-                          className={[
-                            'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
-                            getWheelItemClasses(hora, selectedHour, horas),
-                          ].join(' ')}
-                        >
-                          {hora}
-                        </button>
-                      ))}
-                    </div>
+                      onBlur={() => {
+                        const normalizedHour = normalizeTimeValue(selectedHour, 23);
+                        const normalizedMinute = normalizeTimeValue(selectedMinute, 59);
+                        setSelectedHour(normalizedHour);
+                        setSelectedMinute(normalizedMinute);
+                        setTimeValidationError(getTimeValidationError(normalizedHour, normalizedMinute));
+                      }}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-base font-semibold text-white outline-none transition focus:border-red-500"
+                      placeholder="00"
+                    />
                   </div>
 
-                  <div className="relative">
-                    <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Minuto</p>
-                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
-                    <div
-                      ref={minutoColumnRef}
-                      onScroll={() => {
-                        const timer = setTimeout(() => {
-                          syncSelectionFromScroll(minutoColumnRef.current, minutoItemRefs.current, minutos, setSelectedMinute);
-                        }, 80);
-                        return () => clearTimeout(timer);
+                  <div className="flex flex-col gap-2 rounded-2xl border border-slate-700 bg-slate-950/70 p-3 sm:col-span-1">
+                    <label htmlFor="minuto-fut" className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">
+                      Minuto
+                    </label>
+                    <input
+                      id="minuto-fut"
+                      type="number"
+                      min="0"
+                      max="59"
+                      inputMode="numeric"
+                      value={selectedMinute}
+                      onChange={(event) => {
+                        const nextValue = event.target.value.replace(/\D/g, '');
+                        setSelectedMinute(nextValue);
+                        setTimeValidationError(getTimeValidationError(selectedHour, nextValue));
                       }}
-                      className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
-                    >
-                      {minutos.map((minuto) => (
-                        <button
-                          key={minuto}
-                          ref={(element) => {
-                            minutoItemRefs.current[minuto] = element;
-                          }}
-                          type="button"
-                          onClick={() => setSelectedMinute(minuto)}
-                          className={[
-                            'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
-                            getWheelItemClasses(minuto, selectedMinute, minutos),
-                          ].join(' ')}
-                        >
-                          {minuto}
-                        </button>
-                      ))}
-                    </div>
+                      onBlur={() => {
+                        const normalizedHour = normalizeTimeValue(selectedHour, 23);
+                        const normalizedMinute = normalizeTimeValue(selectedMinute, 59);
+                        setSelectedHour(normalizedHour);
+                        setSelectedMinute(normalizedMinute);
+                        setTimeValidationError(getTimeValidationError(normalizedHour, normalizedMinute));
+                      }}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-base font-semibold text-white outline-none transition focus:border-red-500"
+                      placeholder="00"
+                    />
                   </div>
                 </div>
+
+                {timeValidationError ? (
+                  <p className="mt-3 text-xs text-red-300">{timeValidationError}</p>
+                ) : null}
 
                 <div className="mt-5">
                   <button
