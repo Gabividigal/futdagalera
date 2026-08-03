@@ -553,13 +553,13 @@ export default function SalaPage() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
-      <div className="mb-4 w-full max-w-3xl">
-        <Link href="/dashboard" className="text-sm font-bold uppercase tracking-[0.12em] text-red-300 transition hover:text-red-200">
-          ← Voltar
-        </Link>
-      </div>
-
       <div className="relative z-10 w-full max-w-3xl rounded-[28px] border border-red-800/60 bg-[#111214]/90 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:p-7">
+        <div className="mb-6">
+          <Link href="/dashboard" className="text-sm font-bold uppercase tracking-[0.12em] text-red-300 transition hover:text-red-200">
+            ← Voltar
+          </Link>
+        </div>
+
         <div className="mb-6 text-center">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-red-300">Sala</p>
           <div className="mt-3 flex flex-col items-center gap-2">
