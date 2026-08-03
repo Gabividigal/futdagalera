@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 
@@ -92,6 +92,7 @@ const gerarDiasDisponiveis = () => {
 
 export default function SalaPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params?.id;
   const [sala, setSala] = useState<Sala | null>(null);
   const [membros, setMembros] = useState<Membro[]>([]);
@@ -99,6 +100,9 @@ export default function SalaPage() {
   const [copied, setCopied] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
@@ -257,6 +261,29 @@ export default function SalaPage() {
       if (jogosAtualizados) {
         setProximosJogos(jogosAtualizados as Jogo[]);
       }
+    }
+  };
+
+  const handleDeleteSala = async () => {
+    if (!id || !sala || !isAdmin || isDeleting) return;
+
+    setIsDeleting(true);
+    setDeleteError('');
+
+    try {
+      const { error } = await supabase.from('salas').delete().eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Erro ao apagar sala:', error);
+      setDeleteError('Não foi possível apagar a sala. Tente novamente.');
+      setShowDeleteModal(false);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -534,7 +561,67 @@ export default function SalaPage() {
             </ul>
           )}
         </div>
+
+        {isAdmin ? (
+          <div className="mt-6 border-t border-red-800/40 pt-5">
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteError('');
+                setShowDeleteModal(true);
+              }}
+              className="w-full rounded-xl border border-red-500/60 bg-red-950/40 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/50"
+            >
+              Apagar Sala
+            </button>
+
+            {deleteError ? (
+              <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {deleteError}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      {showDeleteModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="relative w-full max-w-md rounded-[28px] border border-red-800/60 bg-[#111214]/95 p-6 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8)]">
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(false)}
+              aria-label="Fechar confirmação"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-white transition hover:border-red-500 hover:text-red-300"
+            >
+              ×
+            </button>
+
+            <p className="mt-6 text-xl font-black uppercase tracking-[0.12em] text-white">Apagar sala?</p>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Tem certeza que deseja apagar a sala <span className="font-bold text-red-200">{sala.nome}</span>? Essa ação é permanente
+              e vai remover todos os membros, jogos marcados e presenças confirmadas. Não pode ser desfeita.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-700 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:border-slate-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSala}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isDeleting ? 'Apagando...' : 'Sim, apagar sala'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
