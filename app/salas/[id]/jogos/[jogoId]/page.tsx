@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 
 type Jogo = {
@@ -17,6 +17,14 @@ type Presenca = {
   nome: string;
 };
 
+type Sala = {
+  id: string;
+  admin_id: string;
+};
+
+const horas = Array.from({ length: 24 }, (_, index) => index.toString().padStart(2, '0'));
+const minutos = Array.from({ length: 60 }, (_, index) => index.toString().padStart(2, '0'));
+
 const formatDisplayDate = (date: string) => {
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
@@ -25,8 +33,95 @@ const formatDisplayDate = (date: string) => {
   }).format(new Date(`${date}T00:00:00`));
 };
 
+const formatLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const gerarDiasDisponiveis = () => {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: 60 }, (_, index) => {
+    const data = new Date(hoje);
+    data.setDate(hoje.getDate() + index);
+
+    if (index === 0) {
+      return { key: formatLocalDateKey(data), label: 'Hoje' };
+    }
+
+    if (index === 1) {
+      return { key: formatLocalDateKey(data), label: 'Amanhã' };
+    }
+
+    const formatted = new Intl.DateTimeFormat('pt-BR', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }).format(data);
+
+    const normalized = formatted
+      .replace('.', '')
+      .replace(/^./, (char) => char.toUpperCase())
+      .replace(/\s+(\d)/, ' $1');
+
+    const [weekday, dayText, monthText] = normalized.split(' ');
+    const shortMonth = monthText ? monthText.charAt(0).toUpperCase() + monthText.slice(1) : monthText;
+
+    return {
+      key: formatLocalDateKey(data),
+      label: `${weekday}, ${dayText} ${shortMonth}`,
+    };
+  });
+};
+
+const syncSelectionFromScroll = (
+  container: HTMLDivElement | null,
+  items: Record<string, HTMLButtonElement | null>,
+  values: string[],
+  setter: (value: string) => void,
+) => {
+  if (!container) return;
+
+  const center = container.scrollTop + container.clientHeight / 2;
+  let closestValue = values[0];
+  let smallestDistance = Number.POSITIVE_INFINITY;
+
+  values.forEach((value) => {
+    const node = items[value];
+    if (!node) return;
+
+    const nodeCenter = node.offsetTop + node.offsetHeight / 2;
+    const distance = Math.abs(nodeCenter - center);
+
+    if (distance < smallestDistance) {
+      smallestDistance = distance;
+      closestValue = value;
+    }
+  });
+
+  setter(closestValue);
+};
+
+const getWheelItemClasses = (value: string, selectedValue: string, options: string[]) => {
+  const selectedIndex = options.indexOf(selectedValue);
+  const valueIndex = options.indexOf(value);
+  const distance = Math.abs(valueIndex - selectedIndex);
+  const opacity = Math.max(0.2, 1 - distance * 0.17);
+  const textSize = distance === 0 ? 'text-base' : distance === 1 ? 'text-sm' : 'text-xs';
+
+  if (value === selectedValue) {
+    return 'text-base font-extrabold text-red-500 opacity-100';
+  }
+
+  return `${textSize} font-medium text-slate-400 opacity-${Math.round(opacity * 100)}`;
+};
+
 export default function JogoDetalhePage() {
   const params = useParams<{ id: string; jogoId: string }>();
+  const router = useRouter();
   const salaId = params?.id;
   const jogoId = params?.jogoId;
 
@@ -36,6 +131,22 @@ export default function JogoDetalhePage() {
   const [confirmado, setConfirmado] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
+  const [selectedHour, setSelectedHour] = useState<string>('00');
+  const [selectedMinute, setSelectedMinute] = useState<string>('00');
+
+  const diaOptions = gerarDiasDisponiveis();
+  const diaColumnRef = useRef<HTMLDivElement | null>(null);
+  const horaColumnRef = useRef<HTMLDivElement | null>(null);
+  const minutoColumnRef = useRef<HTMLDivElement | null>(null);
+  const diaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const horaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const minutoItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (!salaId || !jogoId) return;
@@ -45,7 +156,8 @@ export default function JogoDetalhePage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      setCurrentUserId(user?.id ?? null);
+      const currentUser = user?.id ?? null;
+      setCurrentUserId(currentUser);
 
       const { data: jogoData, error: jogoError } = await supabase
         .from('jogos')
@@ -54,7 +166,21 @@ export default function JogoDetalhePage() {
         .single();
 
       if (!jogoError && jogoData) {
-        setJogo(jogoData as Jogo);
+        const jogoEncontrado = jogoData as Jogo;
+        setJogo(jogoEncontrado);
+        setSelectedDate(jogoEncontrado.data);
+        setSelectedHour(jogoEncontrado.hora.slice(0, 2));
+        setSelectedMinute(jogoEncontrado.hora.slice(3, 5));
+      }
+
+      const { data: salaData, error: salaError } = await supabase
+        .from('salas')
+        .select('*')
+        .eq('id', salaId)
+        .single();
+
+      if (!salaError && salaData) {
+        setIsAdmin((salaData as Sala).admin_id === currentUser);
       }
 
       const { data: presencasData, error: presencasError } = await supabase
@@ -76,8 +202,8 @@ export default function JogoDetalhePage() {
 
         setPresencas(presencasComNome);
 
-        if (user) {
-          setConfirmado(presencasComNome.some((membro) => membro.user_id === user.id));
+        if (currentUser) {
+          setConfirmado(presencasComNome.some((membro) => membro.user_id === currentUser));
         }
       }
 
@@ -86,6 +212,38 @@ export default function JogoDetalhePage() {
 
     loadJogo();
   }, [salaId, jogoId]);
+
+  useEffect(() => {
+    if (!isEditing || !jogo) return;
+
+    setSelectedDate(jogo.data);
+    setSelectedHour(jogo.hora.slice(0, 2));
+    setSelectedMinute(jogo.hora.slice(3, 5));
+  }, [isEditing, jogo]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const scrollColumnToSelected = (
+      container: HTMLDivElement | null,
+      itemRefs: Record<string, HTMLButtonElement | null>,
+      selectedValue: string,
+    ) => {
+      if (!container) return;
+      const selectedItem = itemRefs[selectedValue];
+      if (!selectedItem) return;
+
+      selectedItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    scrollColumnToSelected(diaColumnRef.current, diaItemRefs.current, selectedDate);
+    scrollColumnToSelected(horaColumnRef.current, horaItemRefs.current, selectedHour);
+    scrollColumnToSelected(minutoColumnRef.current, minutoItemRefs.current, selectedMinute);
+  }, [isEditing, selectedDate, selectedHour, selectedMinute]);
+
+  const hasEditChanges =
+    !!jogo &&
+    (selectedDate !== jogo.data || selectedHour !== jogo.hora.slice(0, 2) || selectedMinute !== jogo.hora.slice(3, 5));
 
   const handleConfirmarPresenca = async () => {
     if (!currentUserId || !jogoId || isSubmitting) return;
@@ -137,6 +295,67 @@ export default function JogoDetalhePage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSalvarEdicao = async () => {
+    if (!jogoId || !hasEditChanges || !isAdmin || isSaving) return;
+
+    setIsSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from('jogos')
+        .update({
+          data: selectedDate,
+          hora: `${selectedHour}:${selectedMinute}:00`,
+        })
+        .eq('id', jogoId);
+
+      if (error) throw error;
+
+      setJogo((prev) =>
+        prev
+          ? {
+              ...prev,
+              data: selectedDate,
+              hora: `${selectedHour}:${selectedMinute}:00`,
+            }
+          : prev,
+      );
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Erro ao salvar alteração do fut:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelarFut = async () => {
+    if (!jogoId || !salaId || !isAdmin || isDeleting) return;
+
+    setIsDeleting(true);
+
+    try {
+      const { error } = await supabase.from('jogos').delete().eq('id', jogoId);
+
+      if (error) throw error;
+
+      setShowCancelModal(false);
+      router.push(`/salas/${salaId}`);
+    } catch (error) {
+      console.error('Erro ao cancelar fut:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const closeEditor = () => {
+    if (!jogo) return;
+
+    setIsEditing(false);
+    setSelectedDate(jogo.data);
+    setSelectedHour(jogo.hora.slice(0, 2));
+    setSelectedMinute(jogo.hora.slice(3, 5));
   };
 
   if (loading) {
@@ -216,12 +435,172 @@ export default function JogoDetalhePage() {
           </Link>
         </div>
 
-        <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300">Fut marcado</p>
-          <h1 className="mt-2 text-2xl font-black uppercase tracking-[0.12em] text-white sm:text-3xl">
-            Fut em {formatDisplayDate(jogo.data)} às {jogo.hora.slice(0, 5)}
-          </h1>
+        <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-center sm:text-left">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300">Fut marcado</p>
+              <h1 className="mt-2 text-2xl font-black uppercase tracking-[0.12em] text-white sm:text-3xl">
+                Fut em {formatDisplayDate(jogo.data)} às {jogo.hora.slice(0, 5)}
+              </h1>
+            </div>
+
+            {isAdmin ? (
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-500/20"
+                >
+                  Editar Fut
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCancelModal(true)}
+                  className="rounded-xl border border-red-500/60 bg-transparent px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-300 transition hover:border-red-400 hover:bg-red-500/10"
+                >
+                  Cancelar Fut
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        {isEditing ? (
+          <div className="mb-6 rounded-2xl border border-red-500/40 bg-[#111214]/95 p-4">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <p className="text-sm font-black uppercase tracking-[0.14em] text-red-200">Editar horário</p>
+              <button
+                type="button"
+                aria-label="Fechar edição"
+                onClick={closeEditor}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-slate-200 transition hover:border-red-500 hover:text-red-300"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="relative">
+                <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Dia</p>
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
+                <div
+                  ref={diaColumnRef}
+                  onScroll={() => {
+                    const timer = setTimeout(() => {
+                      syncSelectionFromScroll(diaColumnRef.current, diaItemRefs.current, diaOptions.map((option) => option.key), setSelectedDate);
+                    }, 80);
+                    return () => clearTimeout(timer);
+                  }}
+                  className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
+                >
+                  {diaOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      ref={(element) => {
+                        diaItemRefs.current[option.key] = element;
+                      }}
+                      type="button"
+                      onClick={() => setSelectedDate(option.key)}
+                      className={[
+                        'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
+                        getWheelItemClasses(option.key, selectedDate, diaOptions.map((item) => item.key)),
+                      ].join(' ')}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative">
+                <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Hora</p>
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
+                <div
+                  ref={horaColumnRef}
+                  onScroll={() => {
+                    const timer = setTimeout(() => {
+                      syncSelectionFromScroll(horaColumnRef.current, horaItemRefs.current, horas, setSelectedHour);
+                    }, 80);
+                    return () => clearTimeout(timer);
+                  }}
+                  className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
+                >
+                  {horas.map((hora) => (
+                    <button
+                      key={hora}
+                      ref={(element) => {
+                        horaItemRefs.current[hora] = element;
+                      }}
+                      type="button"
+                      onClick={() => setSelectedHour(hora)}
+                      className={[
+                        'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
+                        getWheelItemClasses(hora, selectedHour, horas),
+                      ].join(' ')}
+                    >
+                      {hora}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative">
+                <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Minuto</p>
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-red-500/40 bg-red-500/5" />
+                <div
+                  ref={minutoColumnRef}
+                  onScroll={() => {
+                    const timer = setTimeout(() => {
+                      syncSelectionFromScroll(minutoColumnRef.current, minutoItemRefs.current, minutos, setSelectedMinute);
+                    }, 80);
+                    return () => clearTimeout(timer);
+                  }}
+                  className="h-52 snap-y snap-mandatory overflow-y-auto scroll-smooth"
+                >
+                  {minutos.map((minuto) => (
+                    <button
+                      key={minuto}
+                      ref={(element) => {
+                        minutoItemRefs.current[minuto] = element;
+                      }}
+                      type="button"
+                      onClick={() => setSelectedMinute(minuto)}
+                      className={[
+                        'flex h-12 w-full snap-center items-center justify-center px-2 text-center transition duration-200',
+                        getWheelItemClasses(minuto, selectedMinute, minutos),
+                      ].join(' ')}
+                    >
+                      {minuto}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-200 transition hover:border-slate-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSalvarEdicao}
+                disabled={!hasEditChanges || isSaving}
+                className={[
+                  'flex-1 rounded-xl px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg transition duration-200',
+                  !hasEditChanges || isSaving
+                    ? 'cursor-not-allowed bg-slate-700 text-slate-300 shadow-none'
+                    : 'bg-gradient-to-r from-red-700 to-red-500 hover:-translate-y-0.5 hover:shadow-red-800/40',
+                ].join(' ')}
+              >
+                {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {currentUserId ? (
           <div className="mb-6">
@@ -259,6 +638,46 @@ export default function JogoDetalhePage() {
           )}
         </div>
       </div>
+
+      {showCancelModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="relative w-full max-w-md rounded-[28px] border border-red-800/60 bg-[#111214]/95 p-6 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8)]">
+            <button
+              type="button"
+              onClick={() => setShowCancelModal(false)}
+              aria-label="Fechar confirmação"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-white transition hover:border-red-500 hover:text-red-300"
+            >
+              ×
+            </button>
+
+            <p className="mt-6 text-xl font-black uppercase tracking-[0.12em] text-white">
+              Tem certeza que deseja cancelar esse fut?
+            </p>
+            <p className="mt-3 text-sm text-slate-300">
+              Essa ação não pode ser desfeita e removerá também as presenças já confirmadas.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-700 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:border-slate-500"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelarFut}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isDeleting ? 'Cancelando...' : 'Sim, cancelar fut'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
