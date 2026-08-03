@@ -360,23 +360,7 @@ export default function JogoDetalhePage() {
 
   if (loading) {
     return (
-      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#090909] px-4 py-10 text-white">
-        <div className="absolute inset-0 opacity-80">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(190,24,24,0.28),_transparent_35%)]" />
-          <div className="absolute inset-0 bg-[linear-gradient(to_bottom,_rgba(9,9,11,0.9),_rgba(16,20,24,0.96))]" />
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage: `
-                linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(34,197,94,0.15), rgba(17,24,39,0.7)),
-                radial-gradient(circle at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 62%)`,
-              backgroundSize: '28px 28px, 28px 28px, 100% 100%, 100% 100%',
-            }}
-          />
-        </div>
-
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
         <div className="relative z-10 rounded-[28px] border border-red-800/60 bg-[#111214]/90 p-6 text-white shadow-[0_30px_90px_rgba(0,0,0,0.65)]">
           <p className="text-lg font-bold uppercase tracking-[0.12em] text-red-300">Carregando fut...</p>
         </div>
@@ -386,23 +370,7 @@ export default function JogoDetalhePage() {
 
   if (!jogo) {
     return (
-      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#090909] px-4 py-10 text-white">
-        <div className="absolute inset-0 opacity-80">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(190,24,24,0.28),_transparent_35%)]" />
-          <div className="absolute inset-0 bg-[linear-gradient(to_bottom,_rgba(9,9,11,0.9),_rgba(16,20,24,0.96))]" />
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage: `
-                linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(34,197,94,0.15), rgba(17,24,39,0.7)),
-                radial-gradient(circle at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 62%)`,
-              backgroundSize: '28px 28px, 28px 28px, 100% 100%, 100% 100%',
-            }}
-          />
-        </div>
-
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
         <div className="relative z-10 rounded-[28px] border border-red-800/60 bg-[#111214]/90 p-6 text-white shadow-[0_30px_90px_rgba(0,0,0,0.65)]">
           <p className="text-lg font-bold uppercase tracking-[0.12em] text-red-300">Fut não encontrado.</p>
         </div>
@@ -411,23 +379,7 @@ export default function JogoDetalhePage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#090909] px-4 py-10 text-white">
-      <div className="absolute inset-0 opacity-80">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(190,24,24,0.28),_transparent_35%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,_rgba(9,9,11,0.9),_rgba(16,20,24,0.96))]" />
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(34,197,94,0.15), rgba(17,24,39,0.7)),
-              radial-gradient(circle at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 62%)`,
-            backgroundSize: '28px 28px, 28px 28px, 100% 100%, 100% 100%',
-          }}
-        />
-      </div>
-
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
       <div className="relative z-10 w-full max-w-3xl rounded-[28px] border border-red-800/60 bg-[#111214]/90 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:p-7">
         <div className="mb-6 flex items-center justify-between gap-3">
           <Link href={`/salas/${salaId}`} className="text-sm font-bold uppercase tracking-[0.12em] text-red-300 transition hover:text-red-200">
