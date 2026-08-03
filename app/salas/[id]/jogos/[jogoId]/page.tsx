@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { jsPDF } from 'jspdf';
 import { supabase } from '@/lib/supabase/client';
 
 type Jogo = {
@@ -27,6 +28,14 @@ type Sala = {
   admin_id: string;
   cohost_id?: string | null;
   tamanho_time?: number | null;
+  nome?: string | null;
+};
+
+type TimeCardDisplay = {
+  time: number;
+  jogadores: Presenca[];
+  cor: string;
+  capacidade: number;
 };
 
 type TimeJogo = {
@@ -387,6 +396,58 @@ const getWheelItemClasses = (value: string, selectedValue: string, options: stri
   return `${textSize} font-medium text-slate-400 opacity-${Math.round(opacity * 100)}`;
 };
 
+const getPdfCorRgb = (cor: string): [number, number, number] => {
+  switch (cor) {
+    case 'Preto':
+      return [15, 23, 42];
+    case 'Branco':
+      return [241, 245, 249];
+    case 'Vermelho':
+      return [185, 28, 28];
+    case 'Amarelo':
+      return [250, 204, 21];
+    case 'Azul':
+      return [37, 99, 235];
+    case 'Verde':
+      return [5, 150, 105];
+    case 'Roxo':
+      return [124, 58, 237];
+    case 'Laranja':
+      return [249, 115, 22];
+    case 'Rosa':
+      return [236, 72, 153];
+    case 'Cinza':
+      return [100, 116, 139];
+    case 'Turquesa':
+      return [6, 182, 212];
+    case 'Marrom':
+      return [146, 64, 14];
+    case 'Multicolor':
+      return [127, 29, 29];
+    default:
+      return [30, 41, 59];
+  }
+};
+
+const getCorTextoNoPDF = (cor: string): [number, number, number] => {
+  if (cor === 'Branco' || cor === 'Amarelo') {
+    return [15, 23, 42];
+  }
+
+  return [248, 250, 252];
+};
+
+const buildPdfFileName = (nomeSala: string) => {
+  const normalized = nomeSala
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
+  return `times-${normalized || 'sala'}.pdf`;
+};
+
 export default function JogoDetalhePage() {
   const params = useParams<{ id: string; jogoId: string }>();
   const router = useRouter();
@@ -417,6 +478,8 @@ export default function JogoDetalhePage() {
   const [isUpdatingManagedPresence, setIsUpdatingManagedPresence] = useState(false);
   const [selectedPlayerForSwap, setSelectedPlayerForSwap] = useState<Presenca | null>(null);
   const [isSwappingPlayers, setIsSwappingPlayers] = useState(false);
+  const [isSharingTimes, setIsSharingTimes] = useState(false);
+  const [salaNome, setSalaNome] = useState('Sala');
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
@@ -516,6 +579,7 @@ export default function JogoDetalhePage() {
 
       if (!salaError && salaData) {
         const salaAtual = salaData as Sala;
+        setSalaNome((salaAtual.nome || '').trim() || 'Sala');
         setTamanhoTime(typeof salaAtual.tamanho_time === 'number' ? salaAtual.tamanho_time : null);
         const isCurrentAdmin = salaAtual.admin_id === currentUser;
         const isCurrentAdminOuCohost = isCurrentAdmin || salaAtual.cohost_id === currentUser;
@@ -666,6 +730,52 @@ export default function JogoDetalhePage() {
     const numero = Number(valor);
     return Number.isFinite(numero) && numero >= 0 && numero <= 10;
   });
+
+  const getCardsTimes = (): TimeCardDisplay[] => {
+    if (timesDoJogo.length > 0) {
+      return timesDoJogo.map((time) => ({
+        time: time.numero,
+        jogadores: presencas
+          .filter((presenca) => Number(presenca.time_numero ?? 0) === time.numero)
+          .map((presenca) => ({
+            user_id: presenca.user_id,
+            nome: presenca.nome || 'Usuário sem nome',
+            nivel_habilidade: presenca.nivel_habilidade ?? null,
+            time_numero: presenca.time_numero ?? null,
+            valor_habilidade: presenca.valor_habilidade ?? null,
+          } as Presenca)),
+        cor: time.cor,
+        capacidade: Math.max(1, tamanhoTime ?? 1),
+      }));
+    }
+
+    return timesMontados.map((time) => ({
+      time: time.time,
+      jogadores: time.jogadores
+        .map((nome) => {
+          const jogadorEncontrado = presencas.find((presenca) => (presenca.nome || 'Usuário sem nome') === nome);
+          return jogadorEncontrado
+            ? ({
+                user_id: jogadorEncontrado.user_id,
+                nome: jogadorEncontrado.nome || 'Usuário sem nome',
+                nivel_habilidade: jogadorEncontrado.nivel_habilidade ?? null,
+                time_numero: jogadorEncontrado.time_numero ?? null,
+                valor_habilidade: jogadorEncontrado.valor_habilidade ?? null,
+              } as Presenca)
+            : ({
+                user_id: `fallback-${nome}`,
+                nome,
+                nivel_habilidade: null,
+                time_numero: time.time,
+                valor_habilidade: null,
+              } as Presenca);
+        }),
+      cor: timesDoJogo.find((item) => item.numero === time.time)?.cor ?? 'Preto',
+      capacidade: Math.max(1, time.capacidade ?? tamanhoTime ?? 1),
+    }));
+  };
+
+  const cardsTimes = getCardsTimes();
 
   const handleConfirmarPresenca = async () => {
     if (!currentUserId || !jogoId || isSubmitting) return;
@@ -1042,6 +1152,119 @@ export default function JogoDetalhePage() {
     setSelectedMinute(jogo.hora.slice(3, 5));
   };
 
+  const handleCompartilharTimes = async () => {
+    if (!jogo || cardsTimes.length === 0 || isSharingTimes) return;
+
+    setIsSharingTimes(true);
+
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 16;
+      const contentWidth = pageWidth - marginX * 2;
+      let currentY = 18;
+
+      const ensureSpace = (neededHeight: number) => {
+        if (currentY + neededHeight > pageHeight - 18) {
+          doc.addPage();
+          currentY = 18;
+        }
+      };
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(185, 28, 28);
+      doc.text('FUT DA GALERA', marginX, currentY);
+      currentY += 8;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Sala: ${salaNome}`, marginX, currentY);
+      currentY += 6;
+      doc.text(`Fut: ${formatDisplayDate(jogo.data)} às ${jogo.hora.slice(0, 5)}`, marginX, currentY);
+      currentY += 10;
+
+      cardsTimes.forEach((time) => {
+        const capacidade = Math.max(1, Number(time.capacidade ?? 1));
+        const vagasSobrando = Math.max(0, capacidade - time.jogadores.length);
+        const linhasJogadores = time.jogadores.length + vagasSobrando;
+        const blocoAltura = 14 + linhasJogadores * 6 + 4;
+
+        ensureSpace(blocoAltura);
+
+        const [r, g, b] = getPdfCorRgb(time.cor);
+        const [tr, tg, tb] = getCorTextoNoPDF(time.cor);
+
+        doc.setFillColor(r, g, b);
+        doc.setDrawColor(71, 85, 105);
+        doc.rect(marginX, currentY, 8, 8, 'FD');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text(`Time ${time.cor}`, marginX + 12, currentY + 6);
+
+        currentY += 11;
+
+        doc.setFillColor(r, g, b);
+        doc.setTextColor(tr, tg, tb);
+        doc.roundedRect(marginX, currentY, contentWidth, linhasJogadores * 6 + 4, 2, 2, 'F');
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+
+        let linhaY = currentY + 5;
+        time.jogadores.forEach((jogador) => {
+          doc.text(`- ${jogador.nome || 'Usuário sem nome'}`, marginX + 3, linhaY);
+          linhaY += 6;
+        });
+
+        for (let vagaIndex = 0; vagaIndex < vagasSobrando; vagaIndex += 1) {
+          doc.text('- COMPLETA', marginX + 3, linhaY);
+          linhaY += 6;
+        }
+
+        currentY += linhasJogadores * 6 + 10;
+      });
+
+      const totalPaginas = doc.getNumberOfPages();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184);
+      for (let pagina = 1; pagina <= totalPaginas; pagina += 1) {
+        doc.setPage(pagina);
+        doc.text('Gerado por FUT DA GALERA', marginX, pageHeight - 10);
+      }
+
+      const fileName = buildPdfFileName(salaNome);
+      const pdfBlob = doc.output('blob');
+      const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+      if (
+        typeof navigator !== 'undefined' &&
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [pdfFile] })
+      ) {
+        await navigator.share({
+          title: 'Times do FUT DA GALERA',
+          text: `${salaNome} - ${formatDisplayDate(jogo.data)} às ${jogo.hora.slice(0, 5)}`,
+          files: [pdfFile],
+        });
+      } else {
+        doc.save(fileName);
+      }
+
+    } catch (error) {
+      console.error('Erro ao compartilhar times:', error);
+      alert('Não foi possível gerar o PDF dos times. Tente novamente.');
+    } finally {
+      setIsSharingTimes(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
@@ -1406,8 +1629,23 @@ export default function JogoDetalhePage() {
 
         {presencas.length > 0 ? (
           <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-black uppercase tracking-[0.12em] text-white">Times</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black uppercase tracking-[0.12em] text-white">Times</h2>
+                <button
+                  type="button"
+                  onClick={handleCompartilharTimes}
+                  disabled={isSharingTimes || cardsTimes.length === 0}
+                  className="inline-flex items-center gap-1 rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-2">
+                    <path d="M17 8a3 3 0 1 0-2.83-4" />
+                    <path d="M7 14a3 3 0 1 0 2.83 4" />
+                    <path d="M8.59 13.51 15.42 10.49" />
+                  </svg>
+                  {isSharingTimes ? 'Gerando...' : 'Compartilhar'}
+                </button>
+              </div>
 
               {isAdminOuCohost ? (
                 <button
@@ -1422,53 +1660,15 @@ export default function JogoDetalhePage() {
             </div>
 
             {(() => {
-              const cardsTimes = timesDoJogo.length > 0
-                ? timesDoJogo.map((time) => ({
-                    time: time.numero,
-                    jogadores: presencas
-                      .filter((presenca) => Number(presenca.time_numero ?? 0) === time.numero)
-                      .map((presenca) => ({
-                        user_id: presenca.user_id,
-                        nome: presenca.nome || 'Usuário sem nome',
-                        nivel_habilidade: presenca.nivel_habilidade ?? null,
-                        time_numero: presenca.time_numero ?? null,
-                        valor_habilidade: presenca.valor_habilidade ?? null,
-                      } as Presenca)),
-                    cor: time.cor,
-                    capacidade: Math.max(1, tamanhoTime ?? 1),
-                  }))
-                : timesMontados.map((time) => ({
-                    time: time.time,
-                    jogadores: time.jogadores
-                      .map((nome) => {
-                        const jogadorEncontrado = presencas.find((presenca) => (presenca.nome || 'Usuário sem nome') === nome);
-                        return jogadorEncontrado
-                          ? ({
-                              user_id: jogadorEncontrado.user_id,
-                              nome: jogadorEncontrado.nome || 'Usuário sem nome',
-                              nivel_habilidade: jogadorEncontrado.nivel_habilidade ?? null,
-                              time_numero: jogadorEncontrado.time_numero ?? null,
-                              valor_habilidade: jogadorEncontrado.valor_habilidade ?? null,
-                            } as Presenca)
-                          : ({
-                              user_id: `fallback-${nome}`,
-                              nome,
-                              nivel_habilidade: null,
-                              time_numero: time.time,
-                              valor_habilidade: null,
-                            } as Presenca);
-                      }),
-                    cor: timesDoJogo.find((item) => item.numero === time.time)?.cor ?? 'Preto',
-                    capacidade: Math.max(1, time.capacidade ?? tamanhoTime ?? 1),
-                  }));
+              const cardsTimesData = cardsTimes;
 
-              if (cardsTimes.length === 0) {
+              if (cardsTimesData.length === 0) {
                 return <p className="text-slate-300">Ainda não foi montado nenhum time para este fut.</p>;
               }
 
               return (
                 <div className="grid gap-3 md:grid-cols-2">
-                  {cardsTimes.map((time) => {
+                  {cardsTimesData.map((time) => {
                     const capacidade = Math.max(1, time.capacidade ?? tamanhoTime ?? 1);
                     const jogadoresExibidos: Array<Presenca | 'COMPLETA'> = [...time.jogadores];
 
