@@ -25,6 +25,13 @@ type Sala = {
   tamanho_time?: number | null;
 };
 
+type TimeJogo = {
+  id?: string;
+  jogo_id: string;
+  numero: number;
+  cor: string;
+};
+
 const getNivelHabilidadeValue = (nivel?: string | null) => {
   const valor = (nivel ?? '').trim().toLowerCase();
 
@@ -132,6 +139,60 @@ const gerarDistribuicaoTimes = (jogadores: Presenca[], capacidade: number) => {
   }));
 };
 
+const getCorDoTime = (numeroDoTime: number, coresUsadas: string[]) => {
+  const coresFixas = ['Preto', 'Branco', 'Vermelho', 'Amarelo'];
+  const coresExtras = ['Azul', 'Verde', 'Roxo', 'Laranja', 'Rosa', 'Cinza', 'Turquesa', 'Marrom'];
+
+  if (numeroDoTime <= coresFixas.length) {
+    return coresFixas[numeroDoTime - 1];
+  }
+
+  if (numeroDoTime === 5) {
+    return 'Multicolor';
+  }
+
+  const coresDisponiveis = coresExtras.filter((cor) => !coresUsadas.includes(cor));
+
+  if (coresDisponiveis.length > 0) {
+    return coresDisponiveis[Math.floor(Math.random() * coresDisponiveis.length)];
+  }
+
+  return coresExtras[Math.floor(Math.random() * coresExtras.length)];
+};
+
+const getCorClasses = (cor: string) => {
+  switch (cor) {
+    case 'Preto':
+      return 'bg-slate-950 text-slate-100 border-slate-600';
+    case 'Branco':
+      return 'bg-slate-100 text-slate-900 border-slate-300';
+    case 'Vermelho':
+      return 'bg-red-700 text-red-100 border-red-500';
+    case 'Amarelo':
+      return 'bg-yellow-400 text-yellow-950 border-yellow-300';
+    case 'Azul':
+      return 'bg-blue-600 text-blue-50 border-blue-400';
+    case 'Verde':
+      return 'bg-emerald-600 text-emerald-50 border-emerald-400';
+    case 'Roxo':
+      return 'bg-violet-600 text-violet-50 border-violet-400';
+    case 'Laranja':
+      return 'bg-orange-500 text-orange-50 border-orange-300';
+    case 'Rosa':
+      return 'bg-pink-500 text-pink-50 border-pink-300';
+    case 'Cinza':
+      return 'bg-slate-500 text-slate-50 border-slate-300';
+    case 'Turquesa':
+      return 'bg-cyan-500 text-cyan-50 border-cyan-300';
+    case 'Marrom':
+      return 'bg-amber-800 text-amber-50 border-amber-500';
+    case 'Multicolor':
+      return 'bg-gradient-to-r from-red-600 via-yellow-400 via-sky-500 to-violet-600 text-white border-red-300';
+    default:
+      return 'bg-slate-800 text-slate-100 border-slate-600';
+  }
+};
+
 const horas = Array.from({ length: 24 }, (_, index) => index.toString().padStart(2, '0'));
 const minutos = Array.from({ length: 60 }, (_, index) => index.toString().padStart(2, '0'));
 
@@ -237,6 +298,7 @@ export default function JogoDetalhePage() {
 
   const [jogo, setJogo] = useState<Jogo | null>(null);
   const [presencas, setPresencas] = useState<Presenca[]>([]);
+  const [timesDoJogo, setTimesDoJogo] = useState<TimeJogo[]>([]);
   const [timesMontados, setTimesMontados] = useState<Array<{ time: number; jogadores: string[]; capacidade?: number }>>([]);
   const [tamanhoTime, setTamanhoTime] = useState<number | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -325,6 +387,23 @@ export default function JogoDetalhePage() {
         if (currentUser) {
           setConfirmado(presencasComNome.some((membro) => membro.user_id === currentUser));
         }
+      }
+
+      const { data: timesData, error: timesError } = await supabase
+        .from('times')
+        .select('*')
+        .eq('jogo_id', jogoId)
+        .order('numero', { ascending: true });
+
+      if (!timesError && timesData) {
+        setTimesDoJogo(
+          timesData.map((time) => ({
+            id: time.id,
+            jogo_id: time.jogo_id,
+            numero: Number(time.numero),
+            cor: String(time.cor || 'Preto'),
+          })),
+        );
       }
 
       setLoading(false);
@@ -427,8 +506,36 @@ export default function JogoDetalhePage() {
     }));
 
     const timesDistribuidos = gerarDistribuicaoTimes(jogadores, capacidade);
+    const numeroDeTimes = timesDistribuidos.length;
+    const coresUsadas: string[] = [];
+    const timesParaInserir: TimeJogo[] = [];
+
+    for (let numeroDoTime = 1; numeroDoTime <= numeroDeTimes; numeroDoTime += 1) {
+      const cor = getCorDoTime(numeroDoTime, coresUsadas);
+      coresUsadas.push(cor);
+
+      timesParaInserir.push({
+        jogo_id: jogoId,
+        numero: numeroDoTime,
+        cor,
+      });
+    }
 
     try {
+      await supabase.from('times').delete().eq('jogo_id', jogoId);
+
+      if (timesParaInserir.length > 0) {
+        const { error: timesError } = await supabase.from('times').insert(
+          timesParaInserir.map((time) => ({
+            jogo_id: time.jogo_id,
+            numero: time.numero,
+            cor: time.cor,
+          })),
+        );
+
+        if (timesError) throw timesError;
+      }
+
       for (const time of timesDistribuidos) {
         for (const jogadorNome of time.jogadores) {
           const jogador = jogadores.find((item) => (item.nome || 'Usuário sem nome') === jogadorNome);
@@ -448,6 +555,7 @@ export default function JogoDetalhePage() {
       }));
 
       setPresencas(jogadoresSemTime);
+      setTimesDoJogo(timesParaInserir);
       setTimesMontados(
         timesDistribuidos.map((time) => ({
           ...time,
@@ -769,42 +877,67 @@ export default function JogoDetalhePage() {
               ) : null}
             </div>
 
-            {timesMontados.length === 0 ? (
-              <p className="text-slate-300">Ainda não foi montado nenhum time para este fut.</p>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {timesMontados.map((time) => {
-                  const capacidade = Math.max(1, time.capacidade ?? tamanhoTime ?? 1);
-                  const jogadoresExibidos = [...time.jogadores];
+            {(() => {
+              const cardsTimes = timesDoJogo.length > 0
+                ? timesDoJogo.map((time) => ({
+                    time: time.numero,
+                    jogadores: presencas
+                      .filter((presenca) => Number(presenca.time_numero ?? 0) === time.numero)
+                      .map((presenca) => presenca.nome || 'Usuário sem nome'),
+                    cor: time.cor,
+                    capacidade: Math.max(1, tamanhoTime ?? 1),
+                  }))
+                : timesMontados.map((time) => ({
+                    time: time.time,
+                    jogadores: time.jogadores,
+                    cor: timesDoJogo.find((item) => item.numero === time.time)?.cor ?? 'Preto',
+                    capacidade: Math.max(1, time.capacidade ?? tamanhoTime ?? 1),
+                  }));
 
-                  while (jogadoresExibidos.length < capacidade) {
-                    jogadoresExibidos.push('COMPLETA');
-                  }
+              if (cardsTimes.length === 0) {
+                return <p className="text-slate-300">Ainda não foi montado nenhum time para este fut.</p>;
+              }
 
-                  return (
-                    <div key={time.time} className="rounded-2xl border border-red-500/30 bg-[#111214]/80 p-3">
-                      <p className="mb-3 text-sm font-black uppercase tracking-[0.12em] text-red-200">Time {time.time}</p>
+              return (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {cardsTimes.map((time) => {
+                    const capacidade = Math.max(1, time.capacidade ?? tamanhoTime ?? 1);
+                    const jogadoresExibidos = [...time.jogadores];
 
-                      <ul className="space-y-2">
-                        {jogadoresExibidos.map((jogador, index) => (
-                          <li
-                            key={`${time.time}-${jogador}-${index}`}
-                            className={[
-                              'rounded-xl border px-2 py-2 text-sm',
-                              jogador === 'COMPLETA'
-                                ? 'border-dashed border-slate-600 bg-slate-800/40 text-slate-400 line-through'
-                                : 'border-slate-700 bg-slate-900/60 text-slate-200',
-                            ].join(' ')}
-                          >
-                            {jogador}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    while (jogadoresExibidos.length < capacidade) {
+                      jogadoresExibidos.push('COMPLETA');
+                    }
+
+                    return (
+                      <div key={time.time} className="rounded-2xl border border-red-500/30 bg-[#111214]/80 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-sm font-black uppercase tracking-[0.12em] text-red-200">Time {time.time} — Camisa {time.cor}</p>
+                          <span className={['inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em]', getCorClasses(time.cor)].join(' ')}>
+                            {time.cor}
+                          </span>
+                        </div>
+
+                        <ul className="space-y-2">
+                          {jogadoresExibidos.map((jogador, index) => (
+                            <li
+                              key={`${time.time}-${jogador}-${index}`}
+                              className={[
+                                'rounded-xl border px-2 py-2 text-sm',
+                                jogador === 'COMPLETA'
+                                  ? 'border-dashed border-slate-600 bg-slate-800/40 text-slate-400 line-through'
+                                  : 'border-slate-700 bg-slate-900/60 text-slate-200',
+                              ].join(' ')}
+                            >
+                              {jogador}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         ) : null}
       </div>
