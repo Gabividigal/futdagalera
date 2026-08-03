@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
@@ -98,6 +99,12 @@ export default function CriarSalaPage() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
       <div className="relative z-10 w-full max-w-md">
+        <div className="mb-4">
+          <Link href="/dashboard" className="text-sm font-bold uppercase tracking-[0.12em] text-red-300 transition hover:text-red-200">
+            ← Voltar
+          </Link>
+        </div>
+
         <div className="rounded-[28px] border border-red-800/60 bg-[#111214]/90 px-5 py-7 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:px-7">
           <div className="mb-4 flex items-center justify-center">
             <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-red-500/70 bg-white/5 shadow-[0_0_20px_rgba(127,29,29,0.45)]">

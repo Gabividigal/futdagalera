@@ -132,6 +132,12 @@ export default function CadastroPage() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
       <div className="relative z-10 w-full max-w-md">
+        <div className="mb-4">
+          <Link href="/login" className="text-sm font-bold uppercase tracking-[0.12em] text-red-300 transition hover:text-red-200">
+            ← Voltar
+          </Link>
+        </div>
+
         {showSuccessState ? (
           <div className="rounded-[28px] border border-red-800/60 bg-[#111214]/90 px-5 py-7 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:px-7">
             <div className="mb-5 flex justify-center">
