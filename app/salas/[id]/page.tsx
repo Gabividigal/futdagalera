@@ -656,6 +656,27 @@ export default function SalaPage() {
           </div>
         ) : null}
 
+        <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Próximos Futs</h2>
+
+          {proximosJogos.length === 0 ? (
+            <p className="text-slate-300">Nenhum jogo marcado para esta sala.</p>
+          ) : (
+            <ul className="space-y-2">
+              {proximosJogos.map((jogo) => (
+                <li key={jogo.id} className="rounded-xl border border-slate-700 bg-slate-900/60 text-sm text-slate-200">
+                  <Link
+                    href={`/salas/${id}/jogos/${jogo.id}`}
+                    className="block px-3 py-2 transition hover:bg-slate-800/80"
+                  >
+                    {formatDisplayDate(jogo.data)} — {jogo.hora.slice(0, 5)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
           <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Membros</h2>
 
@@ -849,27 +870,6 @@ export default function SalaPage() {
             </div>
           </div>
         ) : null}
-
-        <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Próximos Futs</h2>
-
-          {proximosJogos.length === 0 ? (
-            <p className="text-slate-300">Nenhum jogo marcado para esta sala.</p>
-          ) : (
-            <ul className="space-y-2">
-              {proximosJogos.map((jogo) => (
-                <li key={jogo.id} className="rounded-xl border border-slate-700 bg-slate-900/60 text-sm text-slate-200">
-                  <Link
-                    href={`/salas/${id}/jogos/${jogo.id}`}
-                    className="block px-3 py-2 transition hover:bg-slate-800/80"
-                  >
-                    {formatDisplayDate(jogo.data)} — {jogo.hora.slice(0, 5)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
 
         {isAdminOuCohost ? (
           <div className="mt-6 border-t border-red-800/40 pt-5">
