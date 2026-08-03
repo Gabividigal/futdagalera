@@ -34,6 +34,12 @@ type TimeJogo = {
   cor: string;
 };
 
+type MembroSalaGerencia = {
+  user_id: string;
+  nome: string;
+  confirmado: boolean;
+};
+
 const getNivelHabilidadeValue = (nivel?: string | null) => {
   const valor = (nivel ?? '').trim().toLowerCase();
 
@@ -392,6 +398,10 @@ export default function JogoDetalhePage() {
   const [avaliacaoError, setAvaliacaoError] = useState('');
   const [isSavingAvaliacoes, setIsSavingAvaliacoes] = useState(false);
   const [avaliacaoNotas, setAvaliacaoNotas] = useState<Record<string, string>>({});
+  const [membrosSalaParaGerenciar, setMembrosSalaParaGerenciar] = useState<MembroSalaGerencia[]>([]);
+  const [isUpdatingManagedPresence, setIsUpdatingManagedPresence] = useState(false);
+  const [selectedPlayerForSwap, setSelectedPlayerForSwap] = useState<Presenca | null>(null);
+  const [isSwappingPlayers, setIsSwappingPlayers] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
@@ -400,6 +410,57 @@ export default function JogoDetalhePage() {
   const diaOptions = gerarDiasDisponiveis();
   const diaColumnRef = useRef<HTMLDivElement | null>(null);
   const diaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const refreshPresenceData = async () => {
+    if (!salaId || !jogoId) return;
+
+    const { data: presencasAtualizadas, error: presencasError } = await supabase
+      .from('presencas')
+      .select('user_id, time_numero, perfis!user_id(id, nome, nivel_habilidade)')
+      .eq('jogo_id', jogoId);
+
+    if (!presencasError && presencasAtualizadas) {
+      const novasPresencas = presencasAtualizadas.map((presenca) => {
+        const perfil = Array.isArray((presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null }[] | { nome?: string | null; nivel_habilidade?: string | null } | null }).perfis)
+          ? (presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null }[] }).perfis?.[0]
+          : (presenca as { perfis?: { nome?: string | null; nivel_habilidade?: string | null } | null }).perfis;
+
+        return {
+          user_id: presenca.user_id,
+          nome: perfil?.nome || 'Usuário sem nome',
+          nivel_habilidade: perfil?.nivel_habilidade ?? null,
+          time_numero: presenca.time_numero ?? null,
+          valor_habilidade: getNivelHabilidadeValue(perfil?.nivel_habilidade ?? null),
+        } as Presenca;
+      });
+
+      setPresencas(novasPresencas);
+      setConfirmado(novasPresencas.some((membro) => membro.user_id === currentUserId));
+    }
+
+    const { data: membrosSalaData, error: membrosSalaError } = await supabase
+      .from('membros_sala')
+      .select('user_id, perfis!user_id(id, nome)')
+      .eq('sala_id', salaId);
+
+    if (!membrosSalaError && membrosSalaData) {
+      const presencasMap = new Set((presencasAtualizadas ?? []).map((presenca) => presenca.user_id));
+
+      const membrosAtualizados = membrosSalaData.map((membro) => {
+        const perfil = Array.isArray((membro as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
+          ? (membro as { perfis?: { nome?: string | null }[] }).perfis?.[0]
+          : (membro as { perfis?: { nome?: string | null } | null }).perfis;
+
+        return {
+          user_id: membro.user_id,
+          nome: perfil?.nome || 'Usuário sem nome',
+          confirmado: presencasMap.has(membro.user_id),
+        } as MembroSalaGerencia;
+      });
+
+      setMembrosSalaParaGerenciar(membrosAtualizados);
+    }
+  };
 
   useEffect(() => {
     if (!salaId || !jogoId) return;
@@ -470,6 +531,29 @@ export default function JogoDetalhePage() {
         if (currentUser) {
           setConfirmado(presencasComNome.some((membro) => membro.user_id === currentUser));
         }
+      }
+
+      const { data: membrosSalaData, error: membrosSalaError } = await supabase
+        .from('membros_sala')
+        .select('user_id, perfis!user_id(id, nome)')
+        .eq('sala_id', salaId);
+
+      if (!membrosSalaError && membrosSalaData) {
+        const presencasMap = new Set((presencasData ?? []).map((presenca) => presenca.user_id));
+
+        setMembrosSalaParaGerenciar(
+          membrosSalaData.map((membro) => {
+            const perfil = Array.isArray((membro as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
+              ? (membro as { perfis?: { nome?: string | null }[] }).perfis?.[0]
+              : (membro as { perfis?: { nome?: string | null } | null }).perfis;
+
+            return {
+              user_id: membro.user_id,
+              nome: perfil?.nome || 'Usuário sem nome',
+              confirmado: presencasMap.has(membro.user_id),
+            } as MembroSalaGerencia;
+          }),
+        );
       }
 
       if (currentUser) {
@@ -582,30 +666,93 @@ export default function JogoDetalhePage() {
         if (error) throw error;
       }
 
-      const { data: presencasAtualizadas, error: presencasError } = await supabase
-        .from('presencas')
-        .select('user_id, perfis!user_id(id, nome)')
-        .eq('jogo_id', jogoId);
-
-      if (presencasError) throw presencasError;
-
-      const novasPresencas = (presencasAtualizadas ?? []).map((presenca) => {
-        const perfil = Array.isArray((presenca as { perfis?: { nome?: string | null }[] | { nome?: string | null } | null }).perfis)
-          ? (presenca as { perfis?: { nome?: string | null }[] }).perfis?.[0]
-          : (presenca as { perfis?: { nome?: string | null } | null }).perfis;
-
-        return {
-          user_id: presenca.user_id,
-          nome: perfil?.nome || 'Usuário sem nome',
-        } as Presenca;
-      });
-
-      setPresencas(novasPresencas);
-      setConfirmado(novasPresencas.some((membro) => membro.user_id === currentUserId));
+      await refreshPresenceData();
     } catch (error) {
       console.error('Erro ao atualizar presença:', error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGerenciarPresenca = async (membro: MembroSalaGerencia, confirmar: boolean) => {
+    if (!jogoId || !salaId || isUpdatingManagedPresence) return;
+
+    setIsUpdatingManagedPresence(true);
+
+    try {
+      if (confirmar) {
+        const { error } = await supabase.from('presencas').insert([
+          {
+            jogo_id: jogoId,
+            user_id: membro.user_id,
+          },
+        ]);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('presencas')
+          .delete()
+          .eq('jogo_id', jogoId)
+          .eq('user_id', membro.user_id);
+
+        if (error) throw error;
+      }
+
+      await refreshPresenceData();
+    } catch (error) {
+      console.error('Erro ao atualizar presença do membro:', error);
+    } finally {
+      setIsUpdatingManagedPresence(false);
+    }
+  };
+
+  const handleSelecionarJogadorParaTroca = async (jogador: Presenca) => {
+    if (!isAdminOuCohost || !jogoId || isSwappingPlayers) return;
+
+    if (!selectedPlayerForSwap) {
+      setSelectedPlayerForSwap(jogador);
+      return;
+    }
+
+    if (selectedPlayerForSwap.user_id === jogador.user_id) {
+      setSelectedPlayerForSwap(null);
+      return;
+    }
+
+    if (selectedPlayerForSwap.time_numero === null || jogador.time_numero === null) {
+      setSelectedPlayerForSwap(null);
+      return;
+    }
+
+    setIsSwappingPlayers(true);
+
+    try {
+      const timeDoPrimeiro = selectedPlayerForSwap.time_numero;
+      const timeDoSegundo = jogador.time_numero;
+
+      const { error: erroPrimeiro } = await supabase
+        .from('presencas')
+        .update({ time_numero: timeDoSegundo })
+        .eq('jogo_id', jogoId)
+        .eq('user_id', selectedPlayerForSwap.user_id);
+
+      const { error: erroSegundo } = await supabase
+        .from('presencas')
+        .update({ time_numero: timeDoPrimeiro })
+        .eq('jogo_id', jogoId)
+        .eq('user_id', jogador.user_id);
+
+      if (erroPrimeiro || erroSegundo) {
+        throw new Error('Não foi possível trocar os jogadores.');
+      }
+
+      await refreshPresenceData();
+      setSelectedPlayerForSwap(null);
+    } catch (error) {
+      console.error('Erro ao trocar jogadores de time:', error);
+    } finally {
+      setIsSwappingPlayers(false);
     }
   };
 
@@ -1071,6 +1218,39 @@ export default function JogoDetalhePage() {
           </div>
         ) : null}
 
+        {isAdminOuCohost ? (
+          <div className="mb-6 rounded-2xl border border-red-500/40 bg-[#111214]/90 p-4">
+            <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Gerenciar Presenças</h2>
+            <p className="mb-4 text-sm text-slate-300">Confirme ou remova a presença de qualquer membro desta sala para este fut.</p>
+
+            {membrosSalaParaGerenciar.length === 0 ? (
+              <p className="text-slate-300">Nenhum membro disponível para gestão.</p>
+            ) : (
+              <ul className="space-y-2">
+                {membrosSalaParaGerenciar.map((membro) => (
+                  <li key={membro.user_id} className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-sm font-semibold text-slate-100">{membro.nome}</span>
+                    <button
+                      type="button"
+                      disabled={isUpdatingManagedPresence}
+                      onClick={() => handleGerenciarPresenca(membro, !membro.confirmado)}
+                      className={[
+                        'rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition',
+                        membro.confirmado
+                          ? 'border border-slate-600 bg-slate-800 text-slate-200 hover:border-red-500 hover:text-red-200'
+                          : 'border border-red-500/60 bg-red-500/10 text-red-200 hover:border-red-400 hover:bg-red-500/20',
+                        isUpdatingManagedPresence ? 'cursor-not-allowed opacity-60' : '',
+                      ].join(' ')}
+                    >
+                      {membro.confirmado ? 'Remover Presença' : 'Confirmar Presença'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+
         <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
           <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Presenças confirmadas</h2>
 
@@ -1110,13 +1290,37 @@ export default function JogoDetalhePage() {
                     time: time.numero,
                     jogadores: presencas
                       .filter((presenca) => Number(presenca.time_numero ?? 0) === time.numero)
-                      .map((presenca) => presenca.nome || 'Usuário sem nome'),
+                      .map((presenca) => ({
+                        user_id: presenca.user_id,
+                        nome: presenca.nome || 'Usuário sem nome',
+                        nivel_habilidade: presenca.nivel_habilidade ?? null,
+                        time_numero: presenca.time_numero ?? null,
+                        valor_habilidade: presenca.valor_habilidade ?? null,
+                      } as Presenca)),
                     cor: time.cor,
                     capacidade: Math.max(1, tamanhoTime ?? 1),
                   }))
                 : timesMontados.map((time) => ({
                     time: time.time,
-                    jogadores: time.jogadores,
+                    jogadores: time.jogadores
+                      .map((nome) => {
+                        const jogadorEncontrado = presencas.find((presenca) => (presenca.nome || 'Usuário sem nome') === nome);
+                        return jogadorEncontrado
+                          ? ({
+                              user_id: jogadorEncontrado.user_id,
+                              nome: jogadorEncontrado.nome || 'Usuário sem nome',
+                              nivel_habilidade: jogadorEncontrado.nivel_habilidade ?? null,
+                              time_numero: jogadorEncontrado.time_numero ?? null,
+                              valor_habilidade: jogadorEncontrado.valor_habilidade ?? null,
+                            } as Presenca)
+                          : ({
+                              user_id: `fallback-${nome}`,
+                              nome,
+                              nivel_habilidade: null,
+                              time_numero: time.time,
+                              valor_habilidade: null,
+                            } as Presenca);
+                      }),
                     cor: timesDoJogo.find((item) => item.numero === time.time)?.cor ?? 'Preto',
                     capacidade: Math.max(1, time.capacidade ?? tamanhoTime ?? 1),
                   }));
@@ -1129,7 +1333,7 @@ export default function JogoDetalhePage() {
                 <div className="grid gap-3 md:grid-cols-2">
                   {cardsTimes.map((time) => {
                     const capacidade = Math.max(1, time.capacidade ?? tamanhoTime ?? 1);
-                    const jogadoresExibidos = [...time.jogadores];
+                    const jogadoresExibidos: Array<Presenca | 'COMPLETA'> = [...time.jogadores];
 
                     while (jogadoresExibidos.length < capacidade) {
                       jogadoresExibidos.push('COMPLETA');
@@ -1145,19 +1349,45 @@ export default function JogoDetalhePage() {
                         </div>
 
                         <ul className="space-y-2">
-                          {jogadoresExibidos.map((jogador, index) => (
-                            <li
-                              key={`${time.time}-${jogador}-${index}`}
-                              className={[
-                                'rounded-xl border px-2 py-2 text-sm',
-                                jogador === 'COMPLETA'
-                                  ? 'border-dashed border-slate-600 bg-slate-800/40 text-slate-400 line-through'
-                                  : 'border-slate-700 bg-slate-900/60 text-slate-200',
-                              ].join(' ')}
-                            >
-                              {jogador}
-                            </li>
-                          ))}
+                          {jogadoresExibidos.map((jogador, index) => {
+                            const isPlaceholder = jogador === 'COMPLETA';
+                            const jogadorAtual = isPlaceholder ? null : jogador;
+                            const isSelected = Boolean(jogadorAtual && selectedPlayerForSwap?.user_id === jogadorAtual.user_id);
+
+                            return (
+                              <li
+                                key={`${time.time}-${jogador}-${index}`}
+                                className={[
+                                  'rounded-xl border px-2 py-2 text-sm',
+                                  isPlaceholder
+                                    ? 'border-dashed border-slate-600 bg-slate-800/40 text-slate-400 line-through'
+                                    : isSelected
+                                      ? 'border-red-500 bg-red-500/10 text-red-100'
+                                      : 'border-slate-700 bg-slate-900/60 text-slate-200',
+                                ].join(' ')}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span>{isPlaceholder ? jogador : jogador.nome || 'Usuário sem nome'}</span>
+                                  {!isPlaceholder && isAdminOuCohost ? (
+                                    <button
+                                      type="button"
+                                      disabled={isSwappingPlayers}
+                                      onClick={() => handleSelecionarJogadorParaTroca(jogadorAtual as Presenca)}
+                                      className={[
+                                        'rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition',
+                                        isSelected
+                                          ? 'border-red-400 bg-red-500/20 text-red-100'
+                                          : 'border-slate-600 bg-slate-800/70 text-slate-200 hover:border-red-500 hover:text-red-200',
+                                        isSwappingPlayers ? 'cursor-not-allowed opacity-60' : '',
+                                      ].join(' ')}
+                                    >
+                                      {isSelected ? 'Selecionado' : 'Selecionar'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     );
