@@ -678,7 +678,9 @@ export default function SalaPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Membros</h2>
+          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">
+            Membros <span className="text-sm font-semibold text-slate-400">({membros.length})</span>
+          </h2>
 
           {membros.length === 0 ? (
             <p className="text-slate-300">Nenhum membro encontrado nesta sala.</p>

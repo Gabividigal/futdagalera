@@ -1252,7 +1252,9 @@ export default function JogoDetalhePage() {
         ) : null}
 
         <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Presenças confirmadas</h2>
+          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">
+            Presenças confirmadas <span className="text-sm font-semibold text-slate-400">({presencas.length})</span>
+          </h2>
 
           {presencas.length === 0 ? (
             <p className="text-slate-300">Ainda não há confirmações para este fut.</p>
