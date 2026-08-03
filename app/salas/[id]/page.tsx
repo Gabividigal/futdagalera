@@ -101,9 +101,17 @@ export default function SalaPage() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [editError, setEditError] = useState('');
+  const [removeMemberError, setRemoveMemberError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingSala, setIsSavingSala] = useState(false);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
+  const [editForm, setEditForm] = useState({ nome: '', descricao: '', tamanho_time: '' });
+  const [memberToRemove, setMemberToRemove] = useState<Membro | null>(null);
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
@@ -284,6 +292,83 @@ export default function SalaPage() {
       setShowDeleteModal(false);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleSaveSala = async () => {
+    if (!id || !sala) return;
+
+    const nome = editForm.nome.trim();
+    const descricao = editForm.descricao.trim();
+    const tamanhoTimeValue = editForm.tamanho_time === '' ? null : Number(editForm.tamanho_time);
+
+    if (!nome) {
+      setEditError('Informe um nome para a sala.');
+      return;
+    }
+
+    if (tamanhoTimeValue !== null && (!Number.isFinite(tamanhoTimeValue) || tamanhoTimeValue <= 0)) {
+      setEditError('O tamanho de cada time precisa ser maior que zero.');
+      return;
+    }
+
+    setIsSavingSala(true);
+    setEditError('');
+
+    try {
+      const { error } = await supabase
+        .from('salas')
+        .update({
+          nome,
+          descricao: descricao || null,
+          tamanho_time: tamanhoTimeValue,
+        })
+        .eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+
+      setSala((currentSala) =>
+        currentSala
+          ? {
+              ...currentSala,
+              nome,
+              descricao: descricao || null,
+              tamanho_time: tamanhoTimeValue,
+            }
+          : currentSala,
+      );
+      setShowEditModal(false);
+    } catch (error) {
+      console.error('Erro ao atualizar sala:', error);
+      setEditError('Não foi possível salvar as alterações da sala.');
+    } finally {
+      setIsSavingSala(false);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!id || !memberToRemove) return;
+
+    setIsRemovingMember(true);
+    setRemoveMemberError('');
+
+    try {
+      const { error } = await supabase.from('membros_sala').delete().eq('sala_id', id).eq('user_id', memberToRemove.user_id);
+
+      if (error) {
+        throw error;
+      }
+
+      setMembros((currentMembers) => currentMembers.filter((member) => member.user_id !== memberToRemove.user_id));
+      setShowRemoveMemberModal(false);
+      setMemberToRemove(null);
+    } catch (error) {
+      console.error('Erro ao remover membro:', error);
+      setRemoveMemberError('Não foi possível remover esse membro. Tente novamente.');
+    } finally {
+      setIsRemovingMember(false);
     }
   };
 
@@ -564,16 +649,35 @@ export default function SalaPage() {
 
         {isAdmin ? (
           <div className="mt-6 border-t border-red-800/40 pt-5">
-            <button
-              type="button"
-              onClick={() => {
-                setDeleteError('');
-                setShowDeleteModal(true);
-              }}
-              className="w-full rounded-xl border border-red-500/60 bg-red-950/40 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/50"
-            >
-              Apagar Sala
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!sala) return;
+                  setEditForm({
+                    nome: sala.nome,
+                    descricao: sala.descricao ?? '',
+                    tamanho_time: sala.tamanho_time?.toString() ?? '',
+                  });
+                  setEditError('');
+                  setShowEditModal(true);
+                }}
+                className="w-full rounded-xl border border-red-500/60 bg-red-950/40 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/50"
+              >
+                Editar Sala
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError('');
+                  setShowDeleteModal(true);
+                }}
+                className="w-full rounded-xl border border-red-500/60 bg-red-950/40 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/50"
+              >
+                Apagar Sala
+              </button>
+            </div>
 
             {deleteError ? (
               <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
@@ -583,6 +687,174 @@ export default function SalaPage() {
           </div>
         ) : null}
       </div>
+
+      {showEditModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-red-800/60 bg-[#111214]/95 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.8)] sm:p-6">
+            <button
+              type="button"
+              onClick={() => setShowEditModal(false)}
+              aria-label="Fechar edição"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-white transition hover:border-red-500 hover:text-red-300"
+            >
+              ×
+            </button>
+
+            <p className="mt-6 text-xl font-black uppercase tracking-[0.12em] text-white">Editar Sala</p>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label htmlFor="edit-sala-nome" className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-300">
+                  Nome da sala
+                </label>
+                <input
+                  id="edit-sala-nome"
+                  value={editForm.nome}
+                  onChange={(event) => setEditForm((current) => ({ ...current, nome: event.target.value }))}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none transition focus:border-red-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="edit-sala-descricao" className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-300">
+                  Descrição
+                </label>
+                <textarea
+                  id="edit-sala-descricao"
+                  value={editForm.descricao}
+                  onChange={(event) => setEditForm((current) => ({ ...current, descricao: event.target.value }))}
+                  rows={4}
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none transition focus:border-red-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="edit-sala-tamanho" className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-300">
+                  Tamanho de cada time
+                </label>
+                <input
+                  id="edit-sala-tamanho"
+                  type="number"
+                  min={1}
+                  value={editForm.tamanho_time}
+                  onChange={(event) => setEditForm((current) => ({ ...current, tamanho_time: event.target.value }))}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none transition focus:border-red-500"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+                <h3 className="mb-3 text-base font-black uppercase tracking-[0.12em] text-white">Gerenciar Membros</h3>
+
+                {membros.length === 0 ? (
+                  <p className="text-sm text-slate-300">Nenhum membro encontrado nesta sala.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {membros.map((membro) => {
+                      const isOwner = membro.user_id === sala.admin_id;
+
+                      return (
+                        <li
+                          key={membro.user_id}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2"
+                        >
+                          <span className="text-sm text-slate-200">{membro.nome}</span>
+
+                          {!isOwner ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMemberToRemove(membro);
+                                setRemoveMemberError('');
+                                setShowRemoveMemberModal(true);
+                              }}
+                              className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
+                            >
+                              Remover
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Admin</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              {editError ? (
+                <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{editError}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-700 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:border-slate-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSala}
+                disabled={isSavingSala}
+                className="flex-1 rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSavingSala ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRemoveMemberModal && memberToRemove ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div className="relative w-full max-w-md rounded-[28px] border border-red-800/60 bg-[#111214]/95 p-6 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8)]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowRemoveMemberModal(false);
+                setMemberToRemove(null);
+                setRemoveMemberError('');
+              }}
+              aria-label="Fechar confirmação"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-600 bg-slate-900 text-lg text-white transition hover:border-red-500 hover:text-red-300"
+            >
+              ×
+            </button>
+
+            <p className="mt-6 text-xl font-black uppercase tracking-[0.12em] text-white">Remover {memberToRemove.nome} da sala?</p>
+
+            {removeMemberError ? (
+              <div className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {removeMemberError}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRemoveMemberModal(false);
+                  setMemberToRemove(null);
+                  setRemoveMemberError('');
+                }}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-700 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:border-slate-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRemoveMember}
+                disabled={isRemovingMember}
+                className="flex-1 rounded-xl bg-gradient-to-r from-red-700 to-red-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-red-800/40 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isRemovingMember ? 'Removendo...' : 'Sim'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showDeleteModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
