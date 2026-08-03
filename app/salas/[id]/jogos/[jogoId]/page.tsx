@@ -23,6 +23,7 @@ type Presenca = {
 type Sala = {
   id: string;
   admin_id: string;
+  cohost_id?: string | null;
   tamanho_time?: number | null;
 };
 
@@ -354,6 +355,7 @@ export default function JogoDetalhePage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminOuCohost, setIsAdminOuCohost] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -408,7 +410,10 @@ export default function JogoDetalhePage() {
       if (!salaError && salaData) {
         const salaAtual = salaData as Sala;
         setTamanhoTime(typeof salaAtual.tamanho_time === 'number' ? salaAtual.tamanho_time : null);
-        setIsAdmin(salaAtual.admin_id === currentUser);
+        const isCurrentAdmin = salaAtual.admin_id === currentUser;
+        const isCurrentAdminOuCohost = isCurrentAdmin || salaAtual.cohost_id === currentUser;
+        setIsAdmin(isCurrentAdmin);
+        setIsAdminOuCohost(isCurrentAdminOuCohost);
       }
 
       const { data: presencasData, error: presencasError } = await supabase
@@ -619,7 +624,7 @@ export default function JogoDetalhePage() {
   };
 
   const handleMontarTimes = async () => {
-    if (!isAdmin || !jogoId || !salaId || presencas.length === 0 || isSubmitting) return;
+    if (!isAdminOuCohost || !jogoId || !salaId || presencas.length === 0 || isSubmitting) return;
 
     try {
       const { data: salaAtualData, error: salaAtualError } = await supabase
@@ -706,7 +711,7 @@ export default function JogoDetalhePage() {
   };
 
   const handleSalvarEdicao = async () => {
-    if (!jogoId || !hasEditChanges || !isAdmin || isSaving) return;
+    if (!jogoId || !hasEditChanges || !isAdminOuCohost || isSaving) return;
 
     setIsSaving(true);
 
@@ -739,7 +744,7 @@ export default function JogoDetalhePage() {
   };
 
   const handleCancelarFut = async () => {
-    if (!jogoId || !salaId || !isAdmin || isDeleting) return;
+    if (!jogoId || !salaId || !isAdminOuCohost || isDeleting) return;
 
     setIsDeleting(true);
 
@@ -804,7 +809,7 @@ export default function JogoDetalhePage() {
               </h1>
             </div>
 
-            {isAdmin ? (
+            {isAdminOuCohost ? (
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
                 <button
                   type="button"
@@ -1063,7 +1068,7 @@ export default function JogoDetalhePage() {
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black uppercase tracking-[0.12em] text-white">Times</h2>
 
-              {isAdmin ? (
+              {isAdminOuCohost ? (
                 <button
                   type="button"
                   onClick={handleMontarTimes}

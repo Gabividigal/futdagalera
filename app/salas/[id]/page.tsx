@@ -928,7 +928,7 @@ export default function SalaPage() {
                 />
               </div>
 
-              {isAdmin ? (
+              {isAdminOuCohost ? (
                 <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
                   <h3 className="mb-3 text-base font-black uppercase tracking-[0.12em] text-white">Gerenciar Membros</h3>
 
@@ -960,30 +960,34 @@ export default function SalaPage() {
                                 >
                                   Remover
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setMemberToRoleChange(membro);
-                                    setRoleAction('transfer-host');
-                                    setRoleError('');
-                                    setShowRoleModal(true);
-                                  }}
-                                  className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
-                                >
-                                  Tornar Host
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setMemberToRoleChange(membro);
-                                    setRoleAction('toggle-cohost');
-                                    setRoleError('');
-                                    setShowRoleModal(true);
-                                  }}
-                                  className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
-                                >
-                                  {isCurrentCohost ? 'Remover Co-host' : 'Tornar Co-host'}
-                                </button>
+                                {isAdmin ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMemberToRoleChange(membro);
+                                        setRoleAction('transfer-host');
+                                        setRoleError('');
+                                        setShowRoleModal(true);
+                                      }}
+                                      className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
+                                    >
+                                      Tornar Host
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMemberToRoleChange(membro);
+                                        setRoleAction('toggle-cohost');
+                                        setRoleError('');
+                                        setShowRoleModal(true);
+                                      }}
+                                      className="rounded-lg border border-red-500/60 bg-red-900/30 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-900/40"
+                                    >
+                                      {isCurrentCohost ? 'Remover Co-host' : 'Tornar Co-host'}
+                                    </button>
+                                  </>
+                                ) : null}
                               </div>
                             ) : (
                               <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Admin</span>
