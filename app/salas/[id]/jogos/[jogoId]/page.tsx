@@ -745,7 +745,15 @@ export default function JogoDetalhePage() {
 
   const futJaPassou = !!jogo && new Date(`${jogo.data}T${jogo.hora}`) < new Date();
   const futJaComecou = !!jogo && new Date(`${jogo.data}T${jogo.hora}`) <= new Date();
-  const podeAvaliarJogadores = Boolean(currentUserId) && futJaComecou && !hasEvaluatedCurrentGame;
+  const usuarioComPresencaConfirmada = Boolean(currentUserId) && presencas.some(
+    (presenca) => presenca.user_id === currentUserId && presenca.nome_convidado === null,
+  );
+  console.log('[DEBUG][avaliacao-presenca]', {
+    currentUserId,
+    presencas,
+    usuarioComPresencaConfirmada,
+  });
+  const podeAvaliarJogadores = Boolean(currentUserId) && usuarioComPresencaConfirmada && futJaComecou && !hasEvaluatedCurrentGame;
   const jaAvaliouJogoAtual = Boolean(currentUserId) && futJaComecou && hasEvaluatedCurrentGame;
   const jogadoresParaAvaliar = presencas.filter(
     (presenca): presenca is Presenca & { user_id: string } =>
