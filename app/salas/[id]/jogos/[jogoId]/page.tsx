@@ -11,6 +11,7 @@ type Jogo = {
   sala_id: string;
   data: string;
   hora: string;
+  notas_liberadas?: boolean;
 };
 
 type Presenca = {
@@ -57,6 +58,13 @@ type PresencaGerenciaItem = {
   nome: string;
   confirmado: boolean;
   tipo: 'membro' | 'convidado';
+};
+
+type ResumoAvaliacaoRow = {
+  avaliadores_distintos: number;
+  total_elegiveis: number;
+  avaliado_id: string | null;
+  media_parcial: number | null;
 };
 
 const getNivelHabilidadeValue = (nivel?: string | null) => {
@@ -480,6 +488,13 @@ export default function JogoDetalhePage() {
   const [isSwappingPlayers, setIsSwappingPlayers] = useState(false);
   const [isSharingTimes, setIsSharingTimes] = useState(false);
   const [salaNome, setSalaNome] = useState('Sala');
+  const [activeTab, setActiveTab] = useState<'jogo' | 'notas'>('jogo');
+  const [resumoAvaliacoesMap, setResumoAvaliacoesMap] = useState<Record<string, number | null>>({});
+  const [resumoAvaliadoresDistintos, setResumoAvaliadoresDistintos] = useState(0);
+  const [resumoTotalElegiveis, setResumoTotalElegiveis] = useState(0);
+  const [isLoadingResumoAvaliacoes, setIsLoadingResumoAvaliacoes] = useState(false);
+  const [isLiberandoNotas, setIsLiberandoNotas] = useState(false);
+  const [mediasPublicasMap, setMediasPublicasMap] = useState<Record<string, number>>({});
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateKey(new Date()));
   const [selectedHour, setSelectedHour] = useState<string>('00');
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
@@ -488,6 +503,24 @@ export default function JogoDetalhePage() {
   const diaOptions = gerarDiasDisponiveis();
   const diaColumnRef = useRef<HTMLDivElement | null>(null);
   const diaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const carregarMediasPublicas = async (targetJogoId: string) => {
+    const { data, error } = await supabase.rpc('obter_medias_publicas', { p_jogo_id: targetJogoId });
+
+    if (error || !data) {
+      setMediasPublicasMap({});
+      return;
+    }
+
+    const nextMap = (data as Array<{ avaliado_id: string; media: number | null }>).reduce<Record<string, number>>((accumulator, item) => {
+      if (item.avaliado_id && typeof item.media === 'number') {
+        accumulator[item.avaliado_id] = Number(item.media);
+      }
+      return accumulator;
+    }, {});
+
+    setMediasPublicasMap(nextMap);
+  };
 
   const refreshPresenceData = async () => {
     if (!salaId || !jogoId) return;
@@ -672,6 +705,8 @@ export default function JogoDetalhePage() {
         );
       }
 
+      await carregarMediasPublicas(jogoId);
+
       setLoading(false);
     };
 
@@ -776,6 +811,70 @@ export default function JogoDetalhePage() {
   };
 
   const cardsTimes = getCardsTimes();
+  const participantesElegiveis = presencas
+    .filter((presenca): presenca is Presenca & { user_id: string } => Boolean(presenca.user_id) && !presenca.nome_convidado)
+    .sort((a, b) => (a.nome || 'Usuário sem nome').localeCompare(b.nome || 'Usuário sem nome'));
+
+  const carregarResumoAvaliacoes = async () => {
+    if (!jogoId || !isAdminOuCohost) return;
+
+    setIsLoadingResumoAvaliacoes(true);
+
+    try {
+      const { data, error } = await supabase.rpc('obter_resumo_avaliacoes', { p_jogo_id: jogoId });
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as ResumoAvaliacaoRow[];
+      const progressRow = rows[0];
+
+      setResumoAvaliadoresDistintos(Number(progressRow?.avaliadores_distintos ?? 0));
+      setResumoTotalElegiveis(Number(progressRow?.total_elegiveis ?? 0));
+
+      const nextMap = rows.reduce<Record<string, number | null>>((accumulator, row) => {
+        if (!row.avaliado_id) return accumulator;
+        accumulator[row.avaliado_id] = typeof row.media_parcial === 'number' ? Number(row.media_parcial) : null;
+        return accumulator;
+      }, {});
+
+      setResumoAvaliacoesMap(nextMap);
+    } catch (error) {
+      console.error('Erro ao carregar resumo de avaliações:', error);
+      setResumoAvaliadoresDistintos(0);
+      setResumoTotalElegiveis(0);
+      setResumoAvaliacoesMap({});
+    } finally {
+      setIsLoadingResumoAvaliacoes(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'notas' || !isAdminOuCohost) return;
+    carregarResumoAvaliacoes();
+  }, [activeTab, isAdminOuCohost, jogoId]);
+
+  const handleLiberarNotas = async () => {
+    if (!jogoId || !isAdminOuCohost || isLiberandoNotas || jogo?.notas_liberadas) return;
+
+    const confirmadoLiberacao = window.confirm('Isso vai mostrar as médias pra todo mundo. Confirma?');
+    if (!confirmadoLiberacao) return;
+
+    setIsLiberandoNotas(true);
+
+    try {
+      const { error } = await supabase.rpc('liberar_notas_jogo', { p_jogo_id: jogoId });
+      if (error) throw error;
+
+      setJogo((prev) => (prev ? { ...prev, notas_liberadas: true } : prev));
+      await carregarMediasPublicas(jogoId);
+      await carregarResumoAvaliacoes();
+    } catch (error) {
+      console.error('Erro ao liberar notas do jogo:', error);
+      alert('Não foi possível liberar as notas agora. Tente novamente.');
+    } finally {
+      setIsLiberandoNotas(false);
+    }
+  };
 
   const handleConfirmarPresenca = async () => {
     if (!currentUserId || !jogoId || isSubmitting) return;
@@ -1324,6 +1423,39 @@ export default function JogoDetalhePage() {
           </div>
         </div>
 
+        {isAdminOuCohost ? (
+          <div className="mb-6 rounded-2xl border border-red-500/40 bg-[#111214]/90 p-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('jogo')}
+                className={[
+                  'rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition',
+                  activeTab === 'jogo'
+                    ? 'border border-red-500/60 bg-red-500/20 text-red-100'
+                    : 'border border-slate-700 bg-slate-900/80 text-slate-300 hover:border-red-500/40 hover:text-red-200',
+                ].join(' ')}
+              >
+                Jogo
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('notas')}
+                className={[
+                  'rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition',
+                  activeTab === 'notas'
+                    ? 'border border-red-500/60 bg-red-500/20 text-red-100'
+                    : 'border border-slate-700 bg-slate-900/80 text-slate-300 hover:border-red-500/40 hover:text-red-200',
+                ].join(' ')}
+              >
+                Avaliações
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className={activeTab === 'jogo' ? '' : 'hidden'}>
+
         {isEditing ? (
           <div className="mb-6 rounded-2xl border border-red-500/40 bg-[#111214]/95 p-4">
             <div className="mb-4 flex items-center justify-between gap-2">
@@ -1618,9 +1750,16 @@ export default function JogoDetalhePage() {
               {presencas.map((presenca) => (
                 <li key={presenca.id ?? presenca.user_id ?? presenca.nome} className="flex items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200">
                   <span>{presenca.nome_convidado ? presenca.nome_convidado : presenca.nome}</span>
-                  {presenca.nome_convidado ? (
-                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">(convidado)</span>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {!presenca.nome_convidado && presenca.user_id && jogo?.notas_liberadas && typeof mediasPublicasMap[presenca.user_id] === 'number' ? (
+                      <span className="rounded-lg border border-red-500/60 bg-red-900/50 px-2 py-1 text-[11px] font-black uppercase tracking-[0.1em] text-white">
+                        {mediasPublicasMap[presenca.user_id].toFixed(1)}
+                      </span>
+                    ) : null}
+                    {presenca.nome_convidado ? (
+                      <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">(convidado)</span>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1732,6 +1871,64 @@ export default function JogoDetalhePage() {
                 </div>
               );
             })()}
+          </div>
+        ) : null}
+
+        </div>
+
+        {isAdminOuCohost && activeTab === 'notas' ? (
+          <div className="rounded-2xl border border-red-500/40 bg-[#111214]/90 p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-black uppercase tracking-[0.12em] text-white">Resumo de Avaliações</h2>
+              {jogo?.notas_liberadas ? (
+                <span className="rounded-xl border border-red-500/60 bg-red-500/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-red-100">
+                  Notas já liberadas
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleLiberarNotas}
+                  disabled={isLiberandoNotas}
+                  className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-red-200 transition hover:border-red-400 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLiberandoNotas ? 'Liberando...' : 'Liberar Notas para Todos'}
+                </button>
+              )}
+            </div>
+
+            {isLoadingResumoAvaliacoes ? (
+              <p className="text-sm text-slate-300">Carregando resumo...</p>
+            ) : (
+              <>
+                <p className="mb-4 text-sm text-slate-200">
+                  {resumoAvaliadoresDistintos} de {resumoTotalElegiveis} confirmados já enviaram suas notas
+                </p>
+
+                {participantesElegiveis.length === 0 ? (
+                  <p className="text-sm text-slate-300">Ainda não há participantes elegíveis para avaliação neste fut.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {participantesElegiveis.map((jogador) => {
+                      const mediaJogador = jogador.user_id ? resumoAvaliacoesMap[jogador.user_id] : null;
+                      const temMedia = typeof mediaJogador === 'number' && Number.isFinite(mediaJogador);
+
+                      return (
+                        <li key={`resumo-${jogador.user_id}`} className="flex items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+                          <span className="font-semibold">{jogador.nome || 'Usuário sem nome'}</span>
+                          {temMedia ? (
+                            <span className="rounded-lg border border-red-500/60 bg-red-900/50 px-2 py-1 text-[11px] font-black uppercase tracking-[0.1em] text-white">
+                              {mediaJogador.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-xs uppercase tracking-[0.12em] text-slate-400">Sem notas ainda</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
+            )}
           </div>
         ) : null}
       </div>
