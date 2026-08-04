@@ -21,6 +21,12 @@ type Membro = {
   notaSala?: number | null;
 };
 
+type MediaMembroSalaRow = {
+  user_id: string;
+  media: number | null;
+  total_avaliacoes: number;
+};
+
 type Jogo = {
   id: string;
   data: string;
@@ -112,26 +118,6 @@ const getTimeValidationError = (hourValue: string, minuteValue: string) => {
   return '';
 };
 
-const getNivelHabilidadeValue = (nivel?: string | null) => {
-  const valor = (nivel ?? '').trim().toLowerCase();
-
-  switch (valor) {
-    case 'sou craque':
-      return 10;
-    case 'muito bom':
-      return 7.5;
-    case 'tô na média':
-    case 'to na media':
-      return 5;
-    case 'ruinzinho':
-      return 2.5;
-    case 'sou bagre':
-      return 0;
-    default:
-      return 5;
-  }
-};
-
 const gerarDiasDisponiveis = () => {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
@@ -207,6 +193,46 @@ export default function SalaPage() {
   const diaColumnRef = useRef<HTMLDivElement | null>(null);
   const diaItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  const carregarNotasDosMembros = async (membrosBase?: Membro[]) => {
+    if (!id) return;
+
+    setLoadingNotasMembros(true);
+
+    try {
+      const { data, error } = await supabase.rpc('obter_medias_membros_sala', { p_sala_id: id });
+
+      if (error) {
+        throw error;
+      }
+
+      const mediasMap = ((data ?? []) as MediaMembroSalaRow[]).reduce<Map<string, number>>((accumulator, row) => {
+        if (row.user_id && typeof row.media === 'number') {
+          accumulator.set(String(row.user_id), Number(row.media));
+        }
+        return accumulator;
+      }, new Map<string, number>());
+
+      setMembros((currentMembers) => {
+        const sourceMembers = membrosBase ?? currentMembers;
+        return sourceMembers.map((member) => {
+          const media = mediasMap.get(member.user_id);
+          return {
+            ...member,
+            notaSala: typeof media === 'number' ? Number(media.toFixed(1)) : null,
+          };
+        });
+      });
+    } catch (error) {
+      console.error('Erro ao carregar notas dos membros da sala:', error);
+
+      if (membrosBase) {
+        setMembros(membrosBase.map((member) => ({ ...member, notaSala: null })));
+      }
+    } finally {
+      setLoadingNotasMembros(false);
+    }
+  };
+
   useEffect(() => {
     if (!id) return;
 
@@ -253,6 +279,7 @@ export default function SalaPage() {
         });
 
         setMembros(membrosComNome);
+        await carregarNotasDosMembros(membrosComNome);
       }
 
       const { data: jogosData, error: jogosError } = await supabase
@@ -269,79 +296,21 @@ export default function SalaPage() {
       }
     };
 
-    const carregarNotasDosMembros = async () => {
-      if (!id) return;
-
-      setLoadingNotasMembros(true);
-
-      const { data: jogosDaSalaData } = await supabase.from('jogos').select('id').eq('sala_id', id);
-      const jogoIds = jogosDaSalaData?.map((jogo) => jogo.id) ?? [];
-
-      if (jogoIds.length === 0) {
-        setMembros((currentMembers) => currentMembers.map((member) => ({ ...member, notaSala: null })));
-        setLoadingNotasMembros(false);
-        return;
-      }
-
-      const { data: avaliacoesData } = await supabase
-        .from('avaliacoes')
-        .select('avaliado_id, nota, jogo_id')
-        .in('jogo_id', jogoIds);
-
-      const { data: perfisData } = await supabase.from('perfis').select('id, nivel_habilidade');
-
-      const notasPorUsuario = new Map<string, number>();
-
-      if (avaliacoesData) {
-        const porUsuario = new Map<string, Map<string, number[]>>();
-
-        avaliacoesData.forEach((avaliacao) => {
-          const userId = String(avaliacao.avaliado_id);
-          const jogoId = String(avaliacao.jogo_id);
-
-          if (!porUsuario.has(userId)) {
-            porUsuario.set(userId, new Map<string, number[]>());
-          }
-
-          const notasPorJogo = porUsuario.get(userId)!;
-          if (!notasPorJogo.has(jogoId)) {
-            notasPorJogo.set(jogoId, []);
-          }
-          notasPorJogo.get(jogoId)!.push(Number(avaliacao.nota));
-        });
-
-        porUsuario.forEach((notasPorJogo, userId) => {
-          const mediasPorJogo = Array.from(notasPorJogo.values()).map((notas) => {
-            const soma = notas.reduce((total, nota) => total + nota, 0);
-            return soma / notas.length;
-          });
-
-          const notaMediaSala = mediasPorJogo.reduce((total, media) => total + media, 0) / mediasPorJogo.length;
-          notasPorUsuario.set(userId, notaMediaSala);
-        });
-      }
-
-      const perfisMap = new Map<string, string | null>();
-      (perfisData ?? []).forEach((perfil) => {
-        perfisMap.set(String(perfil.id), perfil.nivel_habilidade ?? null);
-      });
-
-      setMembros((currentMembers) =>
-        currentMembers.map((member) => {
-          const notaExistente = notasPorUsuario.get(member.user_id);
-          if (typeof notaExistente === 'number') {
-            return { ...member, notaSala: Number(notaExistente.toFixed(1)) };
-          }
-
-          const nivel = perfisMap.get(member.user_id);
-          return { ...member, notaSala: Number(getNivelHabilidadeValue(nivel).toFixed(1)) };
-        }),
-      );
-      setLoadingNotasMembros(false);
-    };
-
     loadSala();
-    carregarNotasDosMembros();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    void carregarNotasDosMembros();
+
+    const intervalId = setInterval(() => {
+      void carregarNotasDosMembros();
+    }, 30000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [id]);
 
   const handleCopyCode = async () => {
@@ -747,9 +716,13 @@ export default function SalaPage() {
                     <div className="ml-3 flex items-center gap-2">
                       {loadingNotasMembros ? (
                         <span className="text-xs text-slate-400">...</span>
-                      ) : (
+                      ) : typeof membro.notaSala === 'number' ? (
                         <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-sm font-black text-red-200">
-                          {membro.notaSala?.toFixed(1) ?? '5.0'}
+                          {membro.notaSala.toFixed(1)} ★
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
+                          Sem notas ainda
                         </span>
                       )}
                     </div>
