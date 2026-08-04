@@ -743,6 +743,7 @@ export default function JogoDetalhePage() {
     !!jogo &&
     (selectedDate !== jogo.data || selectedHour !== jogo.hora.slice(0, 2) || selectedMinute !== jogo.hora.slice(3, 5));
 
+  const futJaPassou = !!jogo && new Date(`${jogo.data}T${jogo.hora}`) < new Date();
   const futJaComecou = !!jogo && new Date(`${jogo.data}T${jogo.hora}`) <= new Date();
   const podeAvaliarJogadores = Boolean(currentUserId) && futJaComecou && !hasEvaluatedCurrentGame;
   const jaAvaliouJogoAtual = Boolean(currentUserId) && futJaComecou && hasEvaluatedCurrentGame;
@@ -1422,7 +1423,7 @@ export default function JogoDetalhePage() {
               </h1>
             </div>
 
-            {isAdminOuCohost ? (
+            {isAdminOuCohost && !futJaPassou ? (
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
                 <button
                   type="button"
@@ -1685,7 +1686,7 @@ export default function JogoDetalhePage() {
           </div>
         ) : null}
 
-        {isAdminOuCohost ? (
+        {isAdminOuCohost && !futJaPassou ? (
           <div className="mb-6 rounded-2xl border border-red-500/40 bg-[#111214]/90 p-4">
             <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Gerenciar Presenças</h2>
             <p className="mb-4 text-sm text-slate-300">Confirme ou remova a presença de membros da sala e de convidados avulsos para este fut.</p>
