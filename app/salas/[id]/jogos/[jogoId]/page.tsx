@@ -748,11 +748,6 @@ export default function JogoDetalhePage() {
   const usuarioComPresencaConfirmada = Boolean(currentUserId) && presencas.some(
     (presenca) => presenca.user_id === currentUserId && presenca.nome_convidado === null,
   );
-  console.log('[DEBUG][avaliacao-presenca]', {
-    currentUserId,
-    presencas,
-    usuarioComPresencaConfirmada,
-  });
   const podeAvaliarJogadores = Boolean(currentUserId) && usuarioComPresencaConfirmada && futJaComecou && !hasEvaluatedCurrentGame;
   const jaAvaliouJogoAtual = Boolean(currentUserId) && futJaComecou && hasEvaluatedCurrentGame;
   const jogadoresParaAvaliar = presencas.filter(
@@ -1028,7 +1023,7 @@ export default function JogoDetalhePage() {
   };
 
   const handleSelecionarJogadorParaTroca = async (jogador: Presenca) => {
-    if (!isAdminOuCohost || !jogoId || isSwappingPlayers) return;
+    if (!isAdminOuCohost || !jogoId || isSwappingPlayers || futJaPassou) return;
 
     if (!selectedPlayerForSwap) {
       setSelectedPlayerForSwap(jogador);
@@ -1614,7 +1609,7 @@ export default function JogoDetalhePage() {
           </div>
         ) : null}
 
-        {currentUserId ? (
+        {currentUserId && !futJaPassou ? (
           <div className="mb-6">
             <button
               type="button"
@@ -1815,7 +1810,7 @@ export default function JogoDetalhePage() {
                 </button>
               </div>
 
-              {isAdminOuCohost ? (
+              {isAdminOuCohost && !futJaPassou ? (
                 <button
                   type="button"
                   onClick={handleMontarTimes}
@@ -1873,7 +1868,7 @@ export default function JogoDetalhePage() {
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span>{isPlaceholder ? jogador : jogador.nome || 'Usuário sem nome'}</span>
-                                  {!isPlaceholder && isAdminOuCohost ? (
+                                  {!isPlaceholder && isAdminOuCohost && !futJaPassou ? (
                                     <button
                                       type="button"
                                       disabled={isSwappingPlayers}
