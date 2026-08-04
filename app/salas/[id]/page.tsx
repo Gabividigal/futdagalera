@@ -750,43 +750,45 @@ export default function SalaPage() {
                         : 'border-red-500/40 bg-red-500/10 text-red-200';
 
                 return (
-                  <li key={membro.user_id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      {posicaoRanking ? (
-                        <span className={[
-                          'inline-flex h-7 min-w-7 items-center justify-center rounded-full border px-1 text-[11px] font-black uppercase tracking-[0.04em]',
-                          rankingClasses,
-                        ].join(' ')}>
-                          {posicaoRanking}º
-                        </span>
-                      ) : null}
-
-                      <div className="min-w-0">
-                        <Link
-                          href={`/salas/${id}/membros/${membro.user_id}`}
-                          className="block truncate text-sm font-semibold text-slate-100 transition hover:text-red-200"
-                        >
-                          {membro.nome}
-                        </Link>
-                        {papel ? (
-                          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{papel}</p>
+                  <li key={membro.user_id}>
+                    <Link
+                      href={`/salas/${id}/membros/${membro.user_id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 transition hover:bg-slate-800/80"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {posicaoRanking ? (
+                          <span className={[
+                            'inline-flex h-7 min-w-7 items-center justify-center rounded-full border px-1 text-[11px] font-black uppercase tracking-[0.04em]',
+                            rankingClasses,
+                          ].join(' ')}>
+                            {posicaoRanking}º
+                          </span>
                         ) : null}
-                      </div>
-                    </div>
 
-                    <div className="ml-3 flex items-center gap-2">
-                      {loadingNotasMembros ? (
-                        <span className="text-xs text-slate-400">...</span>
-                      ) : typeof membro.notaSala === 'number' ? (
-                        <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-sm font-black text-red-200">
-                          {membro.notaSala.toFixed(1)} ★
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
-                          Sem notas ainda
-                        </span>
-                      )}
-                    </div>
+                        <div className="min-w-0">
+                          <p className="block truncate text-sm font-semibold text-slate-100 transition hover:text-red-200">
+                            {membro.nome}
+                          </p>
+                          {papel ? (
+                            <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{papel}</p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="ml-3 flex items-center gap-2">
+                        {loadingNotasMembros ? (
+                          <span className="text-xs text-slate-400">...</span>
+                        ) : typeof membro.notaSala === 'number' ? (
+                          <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-sm font-black text-red-200">
+                            {membro.notaSala.toFixed(1)} ★
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
+                            Sem notas ainda
+                          </span>
+                        )}
+                      </div>
+                    </Link>
                   </li>
                 );
               });
