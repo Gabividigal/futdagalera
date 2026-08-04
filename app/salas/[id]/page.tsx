@@ -214,12 +214,31 @@ export default function SalaPage() {
 
       setMembros((currentMembers) => {
         const sourceMembers = membrosBase ?? currentMembers;
-        return sourceMembers.map((member) => {
+        const membrosComMedia = sourceMembers.map((member) => {
           const media = mediasMap.get(member.user_id);
           return {
             ...member,
             notaSala: typeof media === 'number' ? Number(media.toFixed(1)) : null,
           };
+        });
+
+        return membrosComMedia.sort((a, b) => {
+          const mediaA = typeof a.notaSala === 'number' ? a.notaSala : null;
+          const mediaB = typeof b.notaSala === 'number' ? b.notaSala : null;
+
+          if (mediaA !== null && mediaB !== null) {
+            return mediaB - mediaA;
+          }
+
+          if (mediaA !== null && mediaB === null) {
+            return -1;
+          }
+
+          if (mediaA === null && mediaB !== null) {
+            return 1;
+          }
+
+          return 0;
         });
       });
     } catch (error) {
