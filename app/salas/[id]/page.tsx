@@ -27,6 +27,27 @@ type Jogo = {
   hora: string;
 };
 
+const getJogoDateTime = (jogo: Pick<Jogo, 'data' | 'hora'>) => new Date(`${jogo.data}T${jogo.hora}`);
+
+const separarJogosPorMomento = (jogos: Jogo[]) => {
+  const agora = new Date();
+  const proximos: Jogo[] = [];
+  const passados: Jogo[] = [];
+
+  jogos.forEach((jogo) => {
+    if (getJogoDateTime(jogo) >= agora) {
+      proximos.push(jogo);
+    } else {
+      passados.push(jogo);
+    }
+  });
+
+  proximos.sort((a, b) => getJogoDateTime(a).getTime() - getJogoDateTime(b).getTime());
+  passados.sort((a, b) => getJogoDateTime(b).getTime() - getJogoDateTime(a).getTime());
+
+  return { proximos, passados };
+};
+
 const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const formatDateISO = (date: Date) => {
@@ -180,6 +201,7 @@ export default function SalaPage() {
   const [selectedMinute, setSelectedMinute] = useState<string>('00');
   const [timeValidationError, setTimeValidationError] = useState('');
   const [proximosJogos, setProximosJogos] = useState<Jogo[]>([]);
+  const [futsPassados, setFutsPassados] = useState<Jogo[]>([]);
   const [loadingNotasMembros, setLoadingNotasMembros] = useState(false);
   const diaOptions = gerarDiasDisponiveis();
   const diaColumnRef = useRef<HTMLDivElement | null>(null);
@@ -233,18 +255,17 @@ export default function SalaPage() {
         setMembros(membrosComNome);
       }
 
-      const hoje = new Date();
-      const hojeISO = formatDateISO(hoje);
       const { data: jogosData, error: jogosError } = await supabase
         .from('jogos')
         .select('*')
         .eq('sala_id', id)
-        .gte('data', hojeISO)
         .order('data', { ascending: true })
         .order('hora', { ascending: true });
 
       if (!jogosError && jogosData) {
-        setProximosJogos(jogosData as Jogo[]);
+        const { proximos, passados } = separarJogosPorMomento(jogosData as Jogo[]);
+        setProximosJogos(proximos);
+        setFutsPassados(passados);
       }
     };
 
@@ -407,18 +428,17 @@ export default function SalaPage() {
       setSelectedHour('00');
       setSelectedMinute('00');
 
-      const hoje = new Date();
-      const hojeISO = formatDateISO(hoje);
       const { data: jogosAtualizados } = await supabase
         .from('jogos')
         .select('*')
         .eq('sala_id', id)
-        .gte('data', hojeISO)
         .order('data', { ascending: true })
         .order('hora', { ascending: true });
 
       if (jogosAtualizados) {
-        setProximosJogos(jogosAtualizados as Jogo[]);
+        const { proximos, passados } = separarJogosPorMomento(jogosAtualizados as Jogo[]);
+        setProximosJogos(proximos);
+        setFutsPassados(passados);
       }
     }
   };
@@ -670,6 +690,28 @@ export default function SalaPage() {
                     className="block px-3 py-2 transition hover:bg-slate-800/80"
                   >
                     {formatDisplayDate(jogo.data)} — {jogo.hora.slice(0, 5)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+          <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Futs Passados</h2>
+
+          {futsPassados.length === 0 ? (
+            <p className="text-slate-300">Nenhum fut anterior ainda.</p>
+          ) : (
+            <ul className="space-y-2">
+              {futsPassados.map((jogo) => (
+                <li key={`passado-${jogo.id}`} className="rounded-xl border border-slate-700 bg-slate-900/60 text-sm text-slate-200">
+                  <Link
+                    href={`/salas/${id}/jogos/${jogo.id}`}
+                    className="flex items-center justify-between gap-3 px-3 py-2 transition hover:bg-slate-800/80"
+                  >
+                    <span>{formatDisplayDate(jogo.data)} — {jogo.hora.slice(0, 5)}</span>
+                    <span className="text-[11px] font-black uppercase tracking-[0.12em] text-red-200">Ver detalhes</span>
                   </Link>
                 </li>
               ))}
