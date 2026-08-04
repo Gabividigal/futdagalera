@@ -117,6 +117,18 @@ export default function DashboardPage() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-white">
+      <button
+        type="button"
+        onClick={() => router.push('/perfil')}
+        aria-label="Ver perfil"
+        className="absolute right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-red-500/60 bg-[#111214]/90 text-red-300 shadow-lg shadow-red-900/30 transition duration-200 hover:-translate-y-0.5 hover:border-red-400 hover:text-red-200 sm:right-6 sm:top-6"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+          <circle cx="12" cy="8" r="4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
       <div className="relative z-10 w-full max-w-4xl px-4">
         <div className="mb-8 flex flex-col items-center text-center">
           <h1 className="text-2xl font-black uppercase tracking-[0.12em] text-white sm:text-3xl">
