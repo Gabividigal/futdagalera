@@ -762,10 +762,15 @@ export default function SalaPage() {
                       ) : null}
 
                       <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-100">{membro.nome}</p>
-                      {papel ? (
-                        <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{papel}</p>
-                      ) : null}
+                        <Link
+                          href={`/salas/${id}/membros/${membro.user_id}`}
+                          className="block truncate text-sm font-semibold text-slate-100 transition hover:text-red-200"
+                        >
+                          {membro.nome}
+                        </Link>
+                        {papel ? (
+                          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{papel}</p>
+                        ) : null}
                       </div>
                     </div>
 
