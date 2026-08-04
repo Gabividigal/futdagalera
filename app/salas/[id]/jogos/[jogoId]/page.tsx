@@ -744,9 +744,8 @@ export default function JogoDetalhePage() {
     (selectedDate !== jogo.data || selectedHour !== jogo.hora.slice(0, 2) || selectedMinute !== jogo.hora.slice(3, 5));
 
   const futJaComecou = !!jogo && new Date(`${jogo.data}T${jogo.hora}`) <= new Date();
-  const isParticipante = currentUserId
-    ? presencas.some((presenca) => presenca.user_id === currentUserId && presenca.time_numero !== null)
-    : false;
+  const podeAvaliarJogadores = Boolean(currentUserId) && futJaComecou && !hasEvaluatedCurrentGame;
+  const jaAvaliouJogoAtual = Boolean(currentUserId) && futJaComecou && hasEvaluatedCurrentGame;
   const jogadoresParaAvaliar = presencas.filter(
     (presenca): presenca is Presenca & { user_id: string } =>
       Boolean(presenca.user_id) && presenca.user_id !== currentUserId && presenca.time_numero !== null,
@@ -849,8 +848,29 @@ export default function JogoDetalhePage() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'notas' || !isAdminOuCohost) return;
-    carregarResumoAvaliacoes();
+    if (!jogoId) return;
+
+    const intervalId = setInterval(() => {
+      void carregarMediasPublicas(jogoId);
+    }, 30000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [jogoId]);
+
+  useEffect(() => {
+    if (activeTab !== 'notas' || !isAdminOuCohost || !jogoId) return;
+
+    void carregarResumoAvaliacoes();
+
+    const intervalId = setInterval(() => {
+      void carregarResumoAvaliacoes();
+    }, 30000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [activeTab, isAdminOuCohost, jogoId]);
 
   const handleLiberarNotas = async () => {
@@ -1605,7 +1625,7 @@ export default function JogoDetalhePage() {
           </div>
         ) : null}
 
-        {futJaComecou && isParticipante && !hasEvaluatedCurrentGame ? (
+        {podeAvaliarJogadores ? (
           <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
             <h2 className="mb-3 text-lg font-black uppercase tracking-[0.12em] text-white">Avaliar Jogadores</h2>
             <p className="mb-4 text-sm text-slate-300">Agora que o fut já começou, avalie o desempenho dos jogadores que participaram.</p>
@@ -1659,7 +1679,7 @@ export default function JogoDetalhePage() {
           </div>
         ) : null}
 
-        {futJaComecou && isParticipante && hasEvaluatedCurrentGame ? (
+        {jaAvaliouJogoAtual ? (
           <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-slate-200">
             Você já avaliou os jogadores deste fut. Obrigado!
           </div>
