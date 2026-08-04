@@ -716,20 +716,57 @@ export default function SalaPage() {
             <p className="text-slate-300">Nenhum membro encontrado nesta sala.</p>
           ) : (
             <ul className="space-y-2">
-              {membros.map((membro) => {
+              {(() => {
+                let ultimaNota: number | null = null;
+                let ultimaPosicao = 0;
+                let quantidadeComNota = 0;
+
+                return membros.map((membro) => {
+                let posicaoRanking: number | null = null;
+                if (typeof membro.notaSala === 'number') {
+                  quantidadeComNota += 1;
+
+                  if (ultimaNota === null || membro.notaSala !== ultimaNota) {
+                    ultimaPosicao = quantidadeComNota;
+                    ultimaNota = membro.notaSala;
+                  }
+
+                  posicaoRanking = ultimaPosicao;
+                }
+
                 const papel = membro.user_id === sala.admin_id
                   ? '(host)'
                   : membro.user_id === sala.cohost_id
                     ? '(co-host)'
                     : null;
 
+                const rankingClasses =
+                  posicaoRanking === 1
+                    ? 'border-amber-300/70 bg-amber-400/20 text-amber-100'
+                    : posicaoRanking === 2
+                      ? 'border-slate-300/70 bg-slate-400/20 text-slate-100'
+                      : posicaoRanking === 3
+                        ? 'border-orange-300/70 bg-orange-500/20 text-orange-100'
+                        : 'border-red-500/40 bg-red-500/10 text-red-200';
+
                 return (
                   <li key={membro.user_id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {posicaoRanking ? (
+                        <span className={[
+                          'inline-flex h-7 min-w-7 items-center justify-center rounded-full border px-1 text-[11px] font-black uppercase tracking-[0.04em]',
+                          rankingClasses,
+                        ].join(' ')}>
+                          {posicaoRanking}º
+                        </span>
+                      ) : null}
+
+                      <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-100">{membro.nome}</p>
                       {papel ? (
                         <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{papel}</p>
                       ) : null}
+                      </div>
                     </div>
 
                     <div className="ml-3 flex items-center gap-2">
@@ -747,7 +784,8 @@ export default function SalaPage() {
                     </div>
                   </li>
                 );
-              })}
+              });
+              })()}
             </ul>
           )}
         </div>
